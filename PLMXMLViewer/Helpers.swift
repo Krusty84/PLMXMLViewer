@@ -79,3 +79,14 @@ class Logger {
         }
     }
 }
+
+public func sanitizeFileName(_ fileName: String) -> String {
+    // Replace backslashes and other invalid characters with underscores
+    let invalidCharacters = CharacterSet(charactersIn: "\\/:*?\"<>|")
+    return fileName.components(separatedBy: invalidCharacters).joined(separator: "_")
+}
+
+public func sanitizedPath (_ path:String) -> String {
+    return path.replacingOccurrences(of: "\\", with: "/")
+}
+

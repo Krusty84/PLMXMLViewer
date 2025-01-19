@@ -840,29 +840,69 @@ struct FileRow: View {
         let url = URL(fileURLWithPath: path)
         NSWorkspace.shared.open(url)  // opens with default application
     }
-    
+        
     private func revealInFinder(_ path: String) {
-        let url = URL(fileURLWithPath: path)
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        // Replace backslashes with forward slashes
+        let sanitizedPath = path.replacingOccurrences(of: "\\", with: "/")
+        let url = URL(fileURLWithPath: sanitizedPath)
+        // Check if the file exists
+        if FileManager.default.fileExists(atPath: url.path) {
+            // Reveal the file in Finder
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            print("File does not exist at path: \(url.path)")
+        }
     }
     
     private func saveAs(_ path: String) {
-        let sourceURL = URL(fileURLWithPath: path)
+        // Replace backslashes with forward slashes
+        //let sanitizedPath = path.replacingOccurrences(of: "\\", with: "/")
+        
+        // Create a URL from the sanitized path
+        let sourceURL = URL(fileURLWithPath: sanitizedPath(path))
+        
+        // Sanitize the file name
+        let sanitizedFileName = sanitizeFileName(sourceURL.lastPathComponent)
+        
+        // Check if the source file exists
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            print("Source file does not exist at path: \(sourceURL.path)")
+            return
+        }
         
         let panel = NSSavePanel()
         panel.title = "Save File As..."
-        panel.nameFieldStringValue = sourceURL.lastPathComponent
+        panel.nameFieldStringValue = sanitizedFileName // Set only the file name
         panel.allowsOtherFileTypes = true
         
-        // If you prefer asynchronous, use panel.begin. For simplicity, use runModal:
-        if panel.runModal() == .OK, let destination = panel.url {
-            do {
-                try FileManager.default.copyItem(at: sourceURL, to: destination)
-            } catch {
-                print("Could not copy file: \(error)")
+        panel.begin { response in
+            if response == .OK, let destination = panel.url {
+                do {
+                    try FileManager.default.copyItem(at: sourceURL, to: destination)
+                } catch {
+                    print("Could not copy file: \(error.localizedDescription)")
+                }
             }
         }
     }
+    
+//    private func saveAs(_ path: String) {
+//        let sourceURL = URL(fileURLWithPath: path)
+//        
+//        let panel = NSSavePanel()
+//        panel.title = "Save File As..."
+//        panel.nameFieldStringValue = sourceURL.lastPathComponent
+//        panel.allowsOtherFileTypes = true
+//        
+//        // If you prefer asynchronous, use panel.begin. For simplicity, use runModal:
+//        if panel.runModal() == .OK, let destination = panel.url {
+//            do {
+//                try FileManager.default.copyItem(at: sourceURL, to: destination)
+//            } catch {
+//                print("Could not copy file: \(error)")
+//            }
+//        }
+//    }
 }
 
 struct DataSetRow: View {
