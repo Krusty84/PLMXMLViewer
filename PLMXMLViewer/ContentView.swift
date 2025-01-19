@@ -87,7 +87,7 @@ struct DataSetData: Identifiable {
     var name: String?
     var type: String?
     var version: String?
-
+    
     /// For example, `memberRefs="#id466 #id500"`
     var memberRefs: [String] = []
 }
@@ -123,6 +123,7 @@ struct PLMXMLTransferContextlData: Identifiable {
 
 /// Parses PLMXML to build a hierarchical BOM, linking Occurrence → ProductRevision → Product.
 class BOMParser: NSObject, XMLParserDelegate {
+    private let logger = Logger.shared
     let plmxmlDirectory: URL
     // MARK: - Final parsed results
     
@@ -153,28 +154,32 @@ class BOMParser: NSObject, XMLParserDelegate {
     
     //
     // Initialize with the directory
-       init(plmxmlDirectory: URL) {
-           self.plmxmlDirectory = plmxmlDirectory
-           super.init()
-       }
+    init(plmxmlDirectory: URL) {
+        self.plmxmlDirectory = plmxmlDirectory
+        super.init()
+    }
     // MARK: - Public Parse Entry
-
+    
     func parse(xmlData: Data) -> [ProductView] {
+        logger.log("Starting PLMXML parsing process.")
         let parser = XMLParser(data: xmlData)
         parser.delegate = self
         
         if parser.parse() {
             // Post-process to build the hierarchy
+            logger.log("PLMXML parsing completed successfully.")
             buildHierarchyAndLinkData()
             return productViews
         } else {
+            logger.log("PLMXML parsing failed.")
             return []
         }
     }
     
     // MARK: - XMLParserDelegate
-
+    
     func parserDidStartDocument(_ parser: XMLParser) {
+        logger.log("XML parsing started.")
         // Clear all data
         productViews.removeAll()
         revisionRulesDict.removeAll()
@@ -195,7 +200,8 @@ class BOMParser: NSObject, XMLParserDelegate {
         
         insideAttributesInContext = false
         foundCharactersBuffer = ""
-        
+        //
+        logger.log("Cleared all data and reset parser state.")
     }
     
     func parser(_ parser: XMLParser,
@@ -203,156 +209,175 @@ class BOMParser: NSObject, XMLParserDelegate {
                 namespaceURI: String?,
                 qualifiedName qName: String?,
                 attributes attributeDict: [String : String] = [:]) {
-        
         foundCharactersBuffer = ""
-        
-switch elementName {
-        // 1) PLMXML Info
-       case "PLMXML":
+        logger.log("Started parsing element: \(elementName)")
+        switch elementName {
+                // 1) PLMXML Info
+            case "PLMXML":
                 let schemaVersion   = attributeDict["schemaVersion"] ?? ""
                 let date = attributeDict["date"] ?? "(No Name)"
                 let time = attributeDict["time"] ?? "(No Name)"
                 let author = attributeDict["author"] ?? "(No Name)"
                 let plmxmlInfo = PLMXMLGeneralData(id:schemaVersion,author:author,date:date,time:time)
                 plmxmlGeneralDataDict[schemaVersion] = plmxmlInfo
-       // 2) ConfContext Info
-       case "Header":
+                //
+                logger.log("Parsed PLMXML header: schemaVersion=\(schemaVersion), author=\(author), date=\(date), time=\(time).")
+                // 2) ConfContext Info
+            case "Header":
                 // e.g. <Header id="id1" traverseRootRefs="#id5" transferContext="ConfiguredDataFilesExportDefault"></Header>
                 let id   = attributeDict["id"] ?? ""
                 let transferContext = attributeDict["transferContext"] ?? "(No transferContext)"
                 let transferContextInfo = PLMXMLTransferContextlData(id: id, transferContext: transferContext)
                 plmxmlTransferContextDataDict[id] = transferContextInfo
+                //
+                logger.log("Parsed Header: id=\(id), transferContext=\(transferContext).")
                 
-        // 3) ProductView
-        case "ProductView":
-            let id = attributeDict["id"] ?? ""
-            // For ruleRefs="#id2" we remove '#'
-            let rawRuleRefs = attributeDict["ruleRefs"]?.components(separatedBy: " ")
-            let ruleRefs = rawRuleRefs?.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
-            
-            let primaryOccurrenceRef = attributeDict["primaryOccurrenceRef"]
-            let rootRefs = attributeDict["rootRefs"]?.components(separatedBy: " ")
-            
-            currentProductView = ProductView(
-                id: id,
-                ruleRefs: ruleRefs,
-                primaryOccurrenceRef: primaryOccurrenceRef,
-                rootRefs: rootRefs,
-                occurrences: []
-            )
-            
-        // 4) Occurrence
-        case "Occurrence":
-            let id = attributeDict["id"] ?? ""
-            var occ = ProductView.Occurrence(id: id)
-            
-            if let instancedRef = attributeDict["instancedRef"] {
-                occ.instancedRef = instancedRef.hasPrefix("#")
+                // 3) ProductView
+            case "ProductView":
+                let id = attributeDict["id"] ?? ""
+                // For ruleRefs="#id2" we remove '#'
+                let rawRuleRefs = attributeDict["ruleRefs"]?.components(separatedBy: " ")
+                let ruleRefs = rawRuleRefs?.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+                
+                let primaryOccurrenceRef = attributeDict["primaryOccurrenceRef"]
+                let rootRefs = attributeDict["rootRefs"]?.components(separatedBy: " ")
+                
+                currentProductView = ProductView(
+                    id: id,
+                    ruleRefs: ruleRefs,
+                    primaryOccurrenceRef: primaryOccurrenceRef,
+                    rootRefs: rootRefs,
+                    occurrences: []
+                )
+                //
+                logger.log("Parsed ProductView: id=\(id), ruleRefs=\(ruleRefs ?? []), primaryOccurrenceRef=\(primaryOccurrenceRef ?? "nil").")
+                
+                // 4) Occurrence
+            case "Occurrence":
+                let id = attributeDict["id"] ?? ""
+                var occ = ProductView.Occurrence(id: id)
+                
+                if let instancedRef = attributeDict["instancedRef"] {
+                    occ.instancedRef = instancedRef.hasPrefix("#")
                     ? String(instancedRef.dropFirst())
                     : instancedRef
-            }
-            
-            if let refsString = attributeDict["occurrenceRefs"] {
-                let childIDs = refsString.components(separatedBy: " ")
-                    .map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
-                occ.occurrenceRefIDs = childIDs
-            }
-            
-            occurrencesDict[id] = occ
-            currentOccurrence = occ
-            
-        // 5) ProductRevision
-        case "ProductRevision":
-            let id = attributeDict["id"] ?? ""
-            var rev = ProductRevisionData(id: id)
-            
-            rev.name     = attributeDict["name"]
-            rev.subType  = attributeDict["subType"]
-            rev.revision = attributeDict["revision"]
-            
-            // If there's masterRef="#id26", store "id26"
-            if let masterRef = attributeDict["masterRef"] {
-                rev.masterRef = masterRef.hasPrefix("#")
+                }
+                
+                if let refsString = attributeDict["occurrenceRefs"] {
+                    let childIDs = refsString.components(separatedBy: " ")
+                        .map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+                    occ.occurrenceRefIDs = childIDs
+                }
+                
+                occurrencesDict[id] = occ
+                currentOccurrence = occ
+                //
+                logger.log("Parsed Occurrence: id=\(id), instancedRef=\(occ.instancedRef ?? "nil"), occurrenceRefIDs=\(occ.occurrenceRefIDs).")
+                
+                // 5) ProductRevision
+            case "ProductRevision":
+                let id = attributeDict["id"] ?? ""
+                var rev = ProductRevisionData(id: id)
+                
+                rev.name     = attributeDict["name"]
+                rev.subType  = attributeDict["subType"]
+                rev.revision = attributeDict["revision"]
+                
+                // If there's masterRef="#id26", store "id26"
+                if let masterRef = attributeDict["masterRef"] {
+                    rev.masterRef = masterRef.hasPrefix("#")
                     ? String(masterRef.dropFirst())
                     : masterRef
-            }
-            
-            currentProductRevision = rev
-            
-        // 6) Product (NEW)
-        case "Product":
-            // E.g. <Product id="id26" name="Level1" subType="Item" productId="8882">
-            let id = attributeDict["id"] ?? ""
-            var pd = ProductData(id: id)
-            pd.productId = attributeDict["productId"]
-            pd.name      = attributeDict["name"]
-            pd.subType   = attributeDict["subType"]
-            
-            productDict[id] = pd
-            currentProduct = pd
-            
-        // 7) RevisionRule
-        case "RevisionRule":
-            // e.g. <RevisionRule id="id2" name="Latest Working">
-            let id   = attributeDict["id"] ?? ""
-            let name = attributeDict["name"] ?? "(No Name)"
-            let rule = RevisionRuleData(id: id, name: name)
-            revisionRulesDict[id] = rule
-            
-        // 8) UserData
-        case "UserData":
-            // If type="AttributesInContext", we watch for SequenceNumber
-            if let typeAttr = attributeDict["type"], typeAttr == "AttributesInContext" {
-                insideAttributesInContext = true
-            }
-            
-        // 9) UserValue
-        case "UserValue":
-            // Could be sequenceNumber for an Occurrence
-//            if insideAttributesInContext, let occ = currentOccurrence {
-//                if let title = attributeDict["title"], title == "SequenceNumber" {
-//                    let val = attributeDict["value"] ?? ""
-//                    var updatedOcc = occ
-//                    updatedOcc.sequenceNumber = val
-//                    occurrencesDict[occ.id] = updatedOcc
-//                    currentOccurrence = updatedOcc
-//                }
-//            }
+                }
+                
+                currentProductRevision = rev
+                //
+                logger.log("Parsed ProductRevision: id=\(id), name=\(rev.name ?? "nil"), masterRef=\(rev.masterRef ?? "nil").")
+                
+                // 6) Product (NEW)
+            case "Product":
+                // E.g. <Product id="id26" name="Level1" subType="Item" productId="8882">
+                let id = attributeDict["id"] ?? ""
+                var pd = ProductData(id: id)
+                pd.productId = attributeDict["productId"]
+                pd.name      = attributeDict["name"]
+                pd.subType   = attributeDict["subType"]
+                
+                productDict[id] = pd
+                currentProduct = pd
+                //
+                logger.log("Parsed Product: id=\(id), productId=\(pd.productId ?? "nil"), name=\(pd.name ?? "nil").")
+                
+                // 7) RevisionRule
+            case "RevisionRule":
+                // e.g. <RevisionRule id="id2" name="Latest Working">
+                let id   = attributeDict["id"] ?? ""
+                let name = attributeDict["name"] ?? "(No Name)"
+                let rule = RevisionRuleData(id: id, name: name)
+                revisionRulesDict[id] = rule
+                //
+                logger.log("Parsed RevisionRule: id=\(id), name=\(name).")
+                
+                // 8) UserData
+            case "UserData":
+                // If type="AttributesInContext", we watch for SequenceNumber
+                if let typeAttr = attributeDict["type"], typeAttr == "AttributesInContext" {
+                    insideAttributesInContext = true
+                    //
+                    logger.log("Entered UserData block with type=AttributesInContext.")
+                }
+                
+                // 9) UserValue
+            case "UserValue":
+                // Could be sequenceNumber for an Occurrence
+                //            if insideAttributesInContext, let occ = currentOccurrence {
+                //                if let title = attributeDict["title"], title == "SequenceNumber" {
+                //                    let val = attributeDict["value"] ?? ""
+                //                    var updatedOcc = occ
+                //                    updatedOcc.sequenceNumber = val
+                //                    occurrencesDict[occ.id] = updatedOcc
+                //                    currentOccurrence = updatedOcc
+                //                }
+                //            }
                 if insideAttributesInContext, let occ = currentOccurrence {
-                        if let title = attributeDict["title"],
-                           let val   = attributeDict["value"] {
-                            switch title {
+                    if let title = attributeDict["title"],
+                       let val   = attributeDict["value"] {
+                        switch title {
                             case "SequenceNumber":
                                 // existing logic for SequenceNumber
                                 var updatedOcc = occ
                                 updatedOcc.sequenceNumber = val
                                 occurrencesDict[occ.id] = updatedOcc
                                 currentOccurrence = updatedOcc
-
+                                //
+                                logger.log("Updated Occurrence with SequenceNumber: \(val).")
                             case "Quantity":  // <-- new attribute
                                 var updatedOcc = occ
                                 updatedOcc.quantity = val
                                 occurrencesDict[occ.id] = updatedOcc
                                 currentOccurrence = updatedOcc
-
+                                //
+                                logger.log("Updated Occurrence with Quantity: \(val).")
                             default:
                                 break
-                            }
                         }
                     }
-            // Could also be object_string / last_mod_date for ProductRevision
-            if let pr = currentProductRevision,
-               let title = attributeDict["title"],
-               let val   = attributeDict["value"] {
-                var updatedPR = pr
-                switch title {
-                case "object_string": updatedPR.objectString = val
-                case "last_mod_date": updatedPR.lastModDate  = val
-                default: break
                 }
-                currentProductRevision = updatedPR
-            }
-        case "DataSet":
+                // Could also be object_string / last_mod_date for ProductRevision
+                if let pr = currentProductRevision,
+                   let title = attributeDict["title"],
+                   let val   = attributeDict["value"] {
+                    var updatedPR = pr
+                    switch title {
+                        case "object_string": updatedPR.objectString = val
+                        case "last_mod_date": updatedPR.lastModDate  = val
+                        default: break
+                    }
+                    currentProductRevision = updatedPR
+                    //
+                    logger.log("Updated ProductRevision with \(title): \(val).")
+                }
+            case "DataSet":
                 let id = attributeDict["id"] ?? ""
                 var ds = DataSetData(id: id)
                 ds.name = attributeDict["name"]
@@ -364,29 +389,36 @@ switch elementName {
                     ds.memberRefs = fileIds
                 }
                 currentDataSet = ds
-
-        case "ExternalFile":
+                //
+                logger.log("Parsed DataSet: id=\(id), name=\(ds.name ?? "nil"), type=\(ds.type ?? "nil").")
+                
+            case "ExternalFile":
                 let id = attributeDict["id"] ?? ""
-                    var ef = ExternalFileData(id: id)
-                    ef.format = attributeDict["format"]
-                    if let loc = attributeDict["locationRef"] {
-                        ef.locationRef = loc  // store raw
-                        // Or store absolute path:
-                        let absoluteURL = plmxmlDirectory.appendingPathComponent(loc)
-                        ef.fullPath = absoluteURL.path  // add a new property, e.g. `fullPath`
-                    }
-                    currentExternalFile = ef
-      case "AssociatedDataSet":
-                        // e.g. <AssociatedDataSet dataSetRef="#id465">
-                        if let dsRef = attributeDict["dataSetRef"],
-                           let pr = currentProductRevision {
-                            let dsId = dsRef.hasPrefix("#") ? String(dsRef.dropFirst()) : dsRef
-                            var updated = pr
-                            updated.dataSetRefs.append(dsId)
-                            currentProductRevision = updated
-                        }
-        default:
-            break
+                var ef = ExternalFileData(id: id)
+                ef.format = attributeDict["format"]
+                if let loc = attributeDict["locationRef"] {
+                    ef.locationRef = loc  // store raw
+                    // Or store absolute path:
+                    let absoluteURL = plmxmlDirectory.appendingPathComponent(loc)
+                    ef.fullPath = absoluteURL.path  // add a new property, e.g. `fullPath`
+                }
+                currentExternalFile = ef
+                //
+                logger.log("Parsed ExternalFile: id=\(id), format=\(ef.format ?? "nil"), locationRef=\(ef.locationRef ?? "nil").")
+                
+            case "AssociatedDataSet":
+                // e.g. <AssociatedDataSet dataSetRef="#id465">
+                if let dsRef = attributeDict["dataSetRef"],
+                   let pr = currentProductRevision {
+                    let dsId = dsRef.hasPrefix("#") ? String(dsRef.dropFirst()) : dsRef
+                    var updated = pr
+                    updated.dataSetRefs.append(dsId)
+                    currentProductRevision = updated
+                    //
+                    logger.log("Updated ProductRevision with DataSetRef: \(dsId).")
+                }
+            default:
+                break
         }
     }
     
@@ -398,46 +430,49 @@ switch elementName {
                 didEndElement elementName: String,
                 namespaceURI: String?,
                 qualifiedName qName: String?) {
-        
+        logger.log("Finished parsing element: \(elementName).")
         switch elementName {
-        case "ProductView":
-            if let pv = currentProductView {
-                productViews.append(pv)
-            }
-            currentProductView = nil
-            
-        case "Occurrence":
-            if let occ = currentOccurrence {
-                occurrencesDict[occ.id] = occ
-            }
-            currentOccurrence = nil
-            
-        case "ProductRevision":
-            if let rev = currentProductRevision {
-                productRevisionsDict[rev.id] = rev
-            }
-            currentProductRevision = nil
-            
-        case "Product":
-            // We already stored the product in productDict
-            currentProduct = nil
-            
-        case "UserData":
-            // End of "AttributesInContext" block
-            insideAttributesInContext = false
-        case "DataSet":
-                        if let ds = currentDataSet {
-                            dataSetsDict[ds.id] = ds
-                        }
-                        currentDataSet = nil
-
-        case "ExternalFile":
-                        if let ef = currentExternalFile {
-                            externalFilesDict[ef.id] = ef
-                        }
-                        currentExternalFile = nil
-        default:
-            break
+            case "ProductView":
+                if let pv = currentProductView {
+                    productViews.append(pv)
+                }
+                currentProductView = nil
+                
+            case "Occurrence":
+                if let occ = currentOccurrence {
+                    occurrencesDict[occ.id] = occ
+                }
+                currentOccurrence = nil
+                
+            case "ProductRevision":
+                if let rev = currentProductRevision {
+                    productRevisionsDict[rev.id] = rev
+                }
+                currentProductRevision = nil
+                
+            case "Product":
+                // We already stored the product in productDict
+                currentProduct = nil
+                
+            case "UserData":
+                // End of "AttributesInContext" block
+                insideAttributesInContext = false
+                //
+                logger.log("Exited UserData block.")
+                
+            case "DataSet":
+                if let ds = currentDataSet {
+                    dataSetsDict[ds.id] = ds
+                }
+                currentDataSet = nil
+                
+            case "ExternalFile":
+                if let ef = currentExternalFile {
+                    externalFilesDict[ef.id] = ef
+                }
+                currentExternalFile = nil
+            default:
+                break
         }
         
         foundCharactersBuffer = ""
@@ -446,6 +481,7 @@ switch elementName {
     // MARK: - Build BOM
     
     private func buildHierarchyAndLinkData() {
+        logger.log("Building BOM hierarchy and linking data.")
         // For each ProductView, find the root Occurrence(s)
         for i in 0..<productViews.count {
             var pv = productViews[i]
@@ -463,6 +499,7 @@ switch elementName {
             pv.occurrences = rootOccs
             productViews[i] = pv
         }
+        logger.log("BOM hierarchy built successfully.")
     }
     
     /// Recursively build child occurrences and link them to productRevision and product
@@ -509,28 +546,32 @@ class BOMModel: ObservableObject {
     @Published var lastOpenedFileName: String = "(No file opened)"
     @Published var dataSetsDict: [String: DataSetData] = [:]
     @Published var externalFilesDict: [String: ExternalFileData] = [:]
-    /// Helper method for loading from data, using BOMParser.
-//    func loadPLMXML(from data: Data) {
-//        let parser = BOMParser()
-//        let views = parser.parse(xmlData: data)
-//        self.productViews = views
-//        self.revisionRules = parser.revisionRulesDict
-//    }
-    func loadPLMXML(from data: Data, fileName: String,plmxmlDirectory: URL) {
-            let parser = BOMParser(plmxmlDirectory: plmxmlDirectory)
-            let views = parser.parse(xmlData: data)
-            
-            productViews = views
-            revisionRules = parser.revisionRulesDict
-            plmxmlInfo = parser.plmxmlGeneralDataDict
-            plmxmlTransferContextInfo = parser.plmxmlTransferContextDataDict
-            dataSetsDict = parser.dataSetsDict
-            externalFilesDict = parser.externalFilesDict
-            
-            lastOpenedFileName = fileName
-        print("plmxml: ", plmxmlInfo)
-        print("revisionRules: ", revisionRules)
+    //
+    private let logger = Logger.shared
+    var logFileURL: URL? {
+            return Logger.shared.logFileURL
         }
+    /// Helper method for loading from data, using BOMParser.
+    //    func loadPLMXML(from data: Data) {
+    //        let parser = BOMParser()
+    //        let views = parser.parse(xmlData: data)
+    //        self.productViews = views
+    //        self.revisionRules = parser.revisionRulesDict
+    //    }
+    func loadPLMXML(from data: Data, fileName: String,plmxmlDirectory: URL) {
+        logger.log("Starting to load \(fileName)")
+        let parser = BOMParser(plmxmlDirectory: plmxmlDirectory)
+        let views = parser.parse(xmlData: data)
+        
+        productViews = views
+        revisionRules = parser.revisionRulesDict
+        plmxmlInfo = parser.plmxmlGeneralDataDict
+        plmxmlTransferContextInfo = parser.plmxmlTransferContextDataDict
+        dataSetsDict = parser.dataSetsDict
+        externalFilesDict = parser.externalFilesDict
+        lastOpenedFileName = fileName
+        logger.log("Finished processing \(fileName) with \(views.count) ProductViews found.")
+    }
 }
 
 // MARK: - SwiftUI: BOMView
@@ -567,20 +608,20 @@ struct BOMView: View {
                                     if let plmxmlData = model.plmxmlInfo[key]{
                                         (Text("Exported from: ").bold() + Text("\(plmxmlData.author) ").font(.body))
                                         ForEach(Array(model.plmxmlTransferContextInfo.keys), id: \.self) { contextKey in
-                                                        if let plmxmlContextData = model.plmxmlTransferContextInfo[contextKey] {
-                                                            Text("PLMXML Rules: ").bold() + Text("\(plmxmlContextData.transferContext)").font(.body)
-                                                        }
-                                                    }
+                                            if let plmxmlContextData = model.plmxmlTransferContextInfo[contextKey] {
+                                                Text("PLMXML Rules: ").bold() + Text("\(plmxmlContextData.transferContext)").font(.body)
+                                            }
+                                        }
                                         (Text("Date: ").bold() + Text("\(plmxmlData.date) ").font(.body)) +
                                         (Text("Time: ").bold() + Text("\(plmxmlData.time)").font(.body))
                                         (Text("Configured by: ").bold() + Text("\(appliedRevRule) ").font(.body))
-
+                                        
                                     }
                                 }
                             }
                             Section(){
                                 // **Column Header** row
-                               ColumnHeaderView()
+                                ColumnHeaderView()
                                 ForEach(pv.occurrences) { occ in
                                     OccurrenceListItem(
                                         occurrence: occ,
@@ -621,10 +662,10 @@ struct BOMView: View {
         }
         
         //let parser = BOMParser()
-//        let views = parser.parse(xmlData: data)
-//        
-//        productViews = views
-//        revisionRules = parser.revisionRulesDict
+        //        let views = parser.parse(xmlData: data)
+        //
+        //        productViews = views
+        //        revisionRules = parser.revisionRulesDict
         isLoading = false
     }
 }
@@ -636,28 +677,28 @@ struct ColumnHeaderView: View {
     var body: some View {
         HStack(spacing: 8) {
             Text("Name")
-                           .frame(width: 150, alignment: .leading) // Use .leading
-                       
-                       Text("SubType")
-                           .frame(width: 80, alignment: .leading) // Use .leading
-                       
-                       Text("Rev")
-                           .frame(width: 30, alignment: .leading) // Use .leading
-                       
-                       Text("LastMod")
-                           .frame(width: 120, alignment: .leading) // Use .leading
-                       
-                       Text("Seq#")
-                           .frame(width: 50, alignment: .leading) // Use .leading
-                       
-                       Text("ProductId")
-                           .frame(width: 60, alignment: .leading) // Use .leading
-                       
-                       Text("Quantity")
-                           .frame(width: 60, alignment: .leading) // Use .leading
+                .frame(width: 150, alignment: .leading) // Use .leading
+            
+            Text("SubType")
+                .frame(width: 80, alignment: .leading) // Use .leading
+            
+            Text("Rev")
+                .frame(width: 30, alignment: .leading) // Use .leading
+            
+            Text("LastMod")
+                .frame(width: 120, alignment: .leading) // Use .leading
+            
+            Text("Seq#")
+                .frame(width: 50, alignment: .leading) // Use .leading
+            
+            Text("ProductId")
+                .frame(width: 60, alignment: .leading) // Use .leading
+            
+            Text("Quantity")
+                .frame(width: 60, alignment: .leading) // Use .leading
         }
         .font(.headline)
-       // .padding(.vertical, 4)
+        // .padding(.vertical, 4)
     }
 }
 
@@ -676,48 +717,48 @@ struct OccurrenceListItem: View {
             // Recursively show children
             ForEach(occurrence.subOccurrences) { child in
                 OccurrenceListItem(occurrence: child, selectedOccurrence: $selectedOccurrence)
-                    //.padding(.leading, 16)
+                //.padding(.leading, 16)
             }
         } label: {
             Button(action: {
                 selectedOccurrence = occurrence
             }) {
                 HStack(spacing: 8) { // Add spacing between columns
-                                    // 1) DisplayName
-                                    Text(occurrence.displayName ?? occurrence.id)
-                                        .frame(width: 150, alignment: .leading)
-                                    
-                                    // 2) subType
-                                    Text(occurrence.subType ?? "")
-                                        .frame(width: 80, alignment: .leading)
-                                    
-                                    // 3) revision
-                                    Text(occurrence.revision ?? "")
-                                        .frame(width: 30, alignment: .leading)
-                                    
-                                    // 4) last_mod_date
-                                    Text(occurrence.lastModDate ?? "")
-                                        .frame(width: 120, alignment: .leading)
-                                    
-                                    // 5) SequenceNumber
-                                    Text(occurrence.sequenceNumber ?? "")
-                                        .frame(width: 50, alignment: .leading)
-                                        .foregroundColor(.blue)
-                                    
-                                    // 6) ProductId
-                                    Text(occurrence.productId ?? "")
-                                        .frame(width: 60, alignment: .leading)
-                                        .foregroundColor(.purple)
-                                    
-                                    // 7) Quantity
-                                    Text(occurrence.quantity ?? "")
-                                        .frame(width: 60, alignment: .leading)
-                                        .foregroundColor(.orange)
-                                }
-                                .foregroundColor(.primary)
-                                .contentShape(Rectangle()) // Make the entire row tappable
-                            }
-                            .buttonStyle(PlainButtonStyle())
+                    // 1) DisplayName
+                    Text(occurrence.displayName ?? occurrence.id)
+                        .frame(width: 150, alignment: .leading)
+                    
+                    // 2) subType
+                    Text(occurrence.subType ?? "")
+                        .frame(width: 80, alignment: .leading)
+                    
+                    // 3) revision
+                    Text(occurrence.revision ?? "")
+                        .frame(width: 30, alignment: .leading)
+                    
+                    // 4) last_mod_date
+                    Text(occurrence.lastModDate ?? "")
+                        .frame(width: 120, alignment: .leading)
+                    
+                    // 5) SequenceNumber
+                    Text(occurrence.sequenceNumber ?? "")
+                        .frame(width: 50, alignment: .leading)
+                        .foregroundColor(.blue)
+                    
+                    // 6) ProductId
+                    Text(occurrence.productId ?? "")
+                        .frame(width: 60, alignment: .leading)
+                        .foregroundColor(.purple)
+                    
+                    // 7) Quantity
+                    Text(occurrence.quantity ?? "")
+                        .frame(width: 60, alignment: .leading)
+                        .foregroundColor(.orange)
+                }
+                .foregroundColor(.primary)
+                .contentShape(Rectangle()) // Make the entire row tappable
+            }
+            .buttonStyle(PlainButtonStyle())
         }
     }
 }
@@ -748,17 +789,17 @@ struct OccurrenceDetailView: View {
             Text("Child Occurrences: \(occurrence.subOccurrences.count)")
             
             if !occurrence.dataSetRefs.isEmpty {
-                       Divider().padding(.vertical, 4)
+                Divider().padding(.vertical, 4)
                 Text("Datasets").font(.headline).padding(.bottom, 5)
-                       ForEach(occurrence.dataSetRefs, id: \.self) { dsId in
-                           if let ds = model.dataSetsDict[dsId] {
-                               DataSetRow(dataSet: ds, model: model)
-                           } else {
-                               Text("- Unknown DataSet id=\(dsId)")
-                                   .foregroundColor(.secondary)
-                           }
-                       }
-                   }
+                ForEach(occurrence.dataSetRefs, id: \.self) { dsId in
+                    if let ds = model.dataSetsDict[dsId] {
+                        DataSetRow(dataSet: ds, model: model)
+                    } else {
+                        Text("- Unknown DataSet id=\(dsId)")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
         }
         .padding()
     }
@@ -774,11 +815,11 @@ struct FileRow: View {
             Text((filePath as NSString).lastPathComponent) // just the filename
                 .foregroundColor(.blue)
                 .underline()
-                // 1) Make it open the file on left-click
+            // 1) Make it open the file on left-click
                 .onTapGesture {
                     openFile(at: filePath)
                 }
-                // 2) Add a context menu for right-click
+            // 2) Add a context menu for right-click
                 .contextMenu {
                     Button("Open File") {
                         openFile(at: filePath)
@@ -838,18 +879,18 @@ struct DataSetRow: View {
                     if let ef = model.externalFilesDict[fileId] {
                         // A row for the external file
                         HStack {
-//                            Text("File: \(ef.locationRef ?? "-") [\(ef.format ?? "")]")
-//                                .font(.caption)
-//                            
+                            //                            Text("File: \(ef.locationRef ?? "-") [\(ef.format ?? "")]")
+                            //                                .font(.caption)
+                            //
                             // If we have a fullPath, show a button:
                             if let path = ef.fullPath {
                                 FileRow(filePath: path)
-                                                       .padding(.leading, 8)
-//                                Button("Open File") {
-//                                    openFile(atPath: path)
-//                                }
-                                .font(.caption2)
-                                .padding(.leading, 8)
+                                    .padding(.leading, 8)
+                                //                                Button("Open File") {
+                                //                                    openFile(atPath: path)
+                                //                                }
+                                    .font(.caption2)
+                                    .padding(.leading, 8)
                             }
                         }
                     } else {
@@ -866,7 +907,7 @@ struct DataSetRow: View {
     /// Attempt to open the file in Finder or the default application
     private func openFile(atPath path: String) {
         let url = URL(fileURLWithPath: path)
-           NSWorkspace.shared.activateFileViewerSelecting([url])
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }
 

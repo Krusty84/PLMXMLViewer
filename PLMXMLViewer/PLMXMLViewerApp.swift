@@ -26,6 +26,16 @@ struct PLMXMLViewerApp: App {
                   }
                   .keyboardShortcut("o", modifiers: [.command])
               }
+              CommandGroup(replacing: .help) {
+                  Button("Open log file") {
+                      if let logURL = model.logFileURL {
+                          NSWorkspace.shared.open(logURL)
+                      } else {
+                          // Optionally handle absence of a log file
+                          print("No log file available.")
+                      }
+                  }
+              }
           }
       }
       
