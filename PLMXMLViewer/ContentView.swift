@@ -590,6 +590,8 @@ struct BOMView: View {
     @State private var plmxmlTransferContextInfo: [String: PLMXMLTransferContextlData] = [:]
     /// Currently selected occurrence
     @State private var selectedOccurrence: ProductView.Occurrence? = nil
+    //
+    @State private var selectedTab: Int = 0
     var body: some View {
         HStack(spacing: 0) {
             // Left: BOM list
@@ -619,14 +621,37 @@ struct BOMView: View {
                                     }
                                 }
                             }
-                            Section(){
-                                // **Column Header** row
+                            Section {
+                                // Tab Picker
+                                Picker("", selection: $selectedTab) {
+                                    Text("xBOM").tag(0)
+                                    Text("Items").tag(1)
+                                    Text("Tab 3").tag(2)
+                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                                .padding(.horizontal)
+
+                                // Column Header
                                 ColumnHeaderView()
-                                ForEach(pv.occurrences) { occ in
-                                    OccurrenceListItem(
-                                        occurrence: occ,
-                                        selectedOccurrence: $selectedOccurrence
-                                    )
+
+                                // Display occurrences based on the selected tab
+                                switch selectedTab {
+                                case 0:
+                                    // Tab 1: Show all occurrences
+                                    ForEach(pv.occurrences) { occ in
+                                        OccurrenceListItem(
+                                            occurrence: occ,
+                                            selectedOccurrence: $selectedOccurrence
+                                        )
+                                    }
+                                case 1:
+                                    // Tab 2: Show occurrences with subType == "TypeA"
+                                        EmptyView()
+                                case 2:
+                                    // Tab 3: Show occurrences with subType == "TypeB"
+                                        EmptyView()
+                                default:
+                                    EmptyView()
                                 }
                             }
                         }
@@ -638,11 +663,15 @@ struct BOMView: View {
             Divider()
             
             // Right: details
-            VStack {
-                if let occ = selectedOccurrence {
-                    OccurrenceDetailView(occurrence: occ,model: model)
-                } else {
-                    Text("No Occurrence Selected")
+            GeometryReader { geometry in
+                VStack {
+                    if let occ = selectedOccurrence {
+                        OccurrenceDetailView(occurrence: occ, model: model)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                    } else {
+                        Text("No Occurrence Selected")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
             }
             .frame(minWidth: 300)
@@ -771,37 +800,49 @@ struct OccurrenceDetailView: View {
     let model: BOMModel
     
     var body: some View {
-        VStack(alignment: .leading) {
-            Text("Details").font(.headline).padding(.bottom, 5)
-            
-            Text("ID: \(occurrence.id)")
-            Text("Name: \(occurrence.name ?? "-")")
-            Text("DisplayName: \(occurrence.displayName ?? "-")")
-            Text("SubType: \(occurrence.subType ?? "-")")
-            Text("Revision: \(occurrence.revision ?? "-")")
-            Text("LastModDate: \(occurrence.lastModDate ?? "-")")
-            Text("SequenceNumber: \(occurrence.sequenceNumber ?? "-")")
-            Text("Quantity: \(occurrence.quantity ?? "-")")
-            Text("ProductId: \(occurrence.productId ?? "-")")
-            
-            //Divider().padding(.vertical, 8)
-            
-            Text("Child Occurrences: \(occurrence.subOccurrences.count)")
-            
-            if !occurrence.dataSetRefs.isEmpty {
-                Divider().padding(.vertical, 4)
-                Text("Datasets").font(.headline).padding(.bottom, 5)
-                ForEach(occurrence.dataSetRefs, id: \.self) { dsId in
-                    if let ds = model.dataSetsDict[dsId] {
-                        DataSetRow(dataSet: ds, model: model)
-                    } else {
-                        Text("- Unknown DataSet id=\(dsId)")
-                            .foregroundColor(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) { // Reduced spacing
+                Text("Details")
+                    .font(.headline)
+                    .padding(.bottom, 5)
+                
+                // Details Section
+                Group {
+                    Text("ID: \(occurrence.id)")
+                    Text("Name: \(occurrence.name ?? "-")")
+                    Text("DisplayName: \(occurrence.displayName ?? "-")")
+                    Text("SubType: \(occurrence.subType ?? "-")")
+                    Text("Revision: \(occurrence.revision ?? "-")")
+                    Text("LastModDate: \(occurrence.lastModDate ?? "-")")
+                    Text("SequenceNumber: \(occurrence.sequenceNumber ?? "-")")
+                    Text("Quantity: \(occurrence.quantity ?? "-")")
+                    Text("ProductId: \(occurrence.productId ?? "-")")
+                }
+                
+                // Child Occurrences
+                Text("Child Occurrences: \(occurrence.subOccurrences.count)")
+                    .padding(.top, 8)
+                
+                // Datasets Section
+                if !occurrence.dataSetRefs.isEmpty {
+                    Divider()
+                        .padding(.vertical, 8)
+                    Text("Datasets")
+                        .font(.headline)
+                        .padding(.bottom, 5)
+                    ForEach(occurrence.dataSetRefs, id: \.self) { dsId in
+                        if let ds = model.dataSetsDict[dsId] {
+                            DataSetRow(dataSet: ds, model: model)
+                        } else {
+                            Text("- Unknown DataSet id=\(dsId)")
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
             }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading) // Align content to the top-left
         }
-        .padding()
     }
 }
 
