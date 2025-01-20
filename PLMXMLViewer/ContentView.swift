@@ -133,7 +133,7 @@ class BOMParser: NSObject, XMLParserDelegate {
     private(set) var plmxmlTransferContextDataDict: [String: PLMXMLTransferContextlData] = [:]
     
     private var productRevisionsDict: [String: ProductRevisionData] = [:]
-    private var productDict: [String: ProductData] = [:]      // NEW: For <Product> elements
+    private(set) var productDict: [String: ProductData] = [:]
     private var occurrencesDict: [String: ProductView.Occurrence] = [:]
     
     // MARK: - State while parsing
@@ -546,6 +546,7 @@ class BOMModel: ObservableObject {
     @Published var lastOpenedFileName: String = "(No file opened)"
     @Published var dataSetsDict: [String: DataSetData] = [:]
     @Published var externalFilesDict: [String: ExternalFileData] = [:]
+    @Published var productDict: [String: ProductData] = [:] // Expose productDict
     //
     private let logger = Logger.shared
     var logFileURL: URL? {
@@ -569,6 +570,7 @@ class BOMModel: ObservableObject {
         plmxmlTransferContextInfo = parser.plmxmlTransferContextDataDict
         dataSetsDict = parser.dataSetsDict
         externalFilesDict = parser.externalFilesDict
+        productDict = parser.productDict
         lastOpenedFileName = fileName
         logger.log("Finished processing \(fileName) with \(views.count) ProductViews found.")
     }
@@ -590,6 +592,7 @@ struct BOMView: View {
     @State private var plmxmlTransferContextInfo: [String: PLMXMLTransferContextlData] = [:]
     /// Currently selected occurrence
     @State private var selectedOccurrence: ProductView.Occurrence? = nil
+    @State private var selectedProductId: String?
     //
     @State private var selectedTab: Int = 0
     var body: some View {
@@ -631,12 +634,11 @@ struct BOMView: View {
                                 .pickerStyle(SegmentedPickerStyle())
                                 .padding(.horizontal)
 
-                                // Column Header
-                                ColumnHeaderView()
-
                                 // Display occurrences based on the selected tab
                                 switch selectedTab {
                                 case 0:
+                                    // Column Header
+                                    ColumnHeaderOccurrenceView()
                                     // Tab 1: Show all occurrences
                                     ForEach(pv.occurrences) { occ in
                                         OccurrenceListItem(
@@ -646,7 +648,11 @@ struct BOMView: View {
                                     }
                                 case 1:
                                     // Tab 2: Show occurrences with subType == "TypeA"
-                                        EmptyView()
+                                        //EmptyView()
+                                        ColumnHeaderProductView()
+                                        ForEach(model.productDict.values.sorted(by: { $0.id < $1.id })) { product in
+                                                    ProductListItem(product: product, selectedProductId: $selectedProductId)
+                                                }
                                 case 2:
                                     // Tab 3: Show occurrences with subType == "TypeB"
                                         EmptyView()
@@ -702,7 +708,7 @@ struct BOMView: View {
 // MARK: - ColumnHeaderView
 
 /// A single row labeling each column, center-aligned.
-struct ColumnHeaderView: View {
+struct ColumnHeaderOccurrenceView: View {
     var body: some View {
         HStack(spacing: 8) {
             Text("Name")
@@ -721,7 +727,7 @@ struct ColumnHeaderView: View {
                 .frame(width: 50, alignment: .leading) // Use .leading
             
             Text("ProductId")
-                .frame(width: 60, alignment: .leading) // Use .leading
+                .frame(width: 150, alignment: .leading) // Use .leading
             
             Text("Quantity")
                 .frame(width: 60, alignment: .leading) // Use .leading
@@ -776,7 +782,7 @@ struct OccurrenceListItem: View {
                     
                     // 6) ProductId
                     Text(occurrence.productId ?? "")
-                        .frame(width: 60, alignment: .leading)
+                        .frame(width: 150, alignment: .leading)
                         .foregroundColor(.purple)
                     
                     // 7) Quantity
@@ -989,6 +995,66 @@ struct DataSetRow: View {
     private func openFile(atPath path: String) {
         let url = URL(fileURLWithPath: path)
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+}
+
+struct ColumnHeaderProductView: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("ProductId")
+                .frame(width: 150, alignment: .leading) // Use .leading
+            
+            Text("Name")
+                .frame(width: 150, alignment: .leading) // Use .leading
+            
+            Text("SubType")
+                .frame(width: 80, alignment: .leading) // Use .leading
+            // .padding(.vertical, 4)
+        }.font(.headline)
+    }
+}
+
+struct ProductListItem: View {
+    let product: ProductData
+    @Binding var selectedProductId: String?
+    
+    var body: some View {
+        Button(action: {
+            selectedProductId = product.id
+        }) {
+            HStack(spacing: 8) {
+                // 1) Product Id
+                Text(product.productId ?? "No ID")
+                    .frame(width: 150, alignment: .leading)
+                // 2) Product ID
+                Text(product.name ?? "Unnamed Product")
+                    .frame(width: 150, alignment: .leading)
+                // 3) SubType
+                Text(product.subType ?? "")
+                    .frame(width: 80, alignment: .leading)
+//                
+//                // 4) Revision (if available)
+//                Text("") // Placeholder for revision (not applicable for products)
+//                    .frame(width: 30, alignment: .leading)
+//                
+//                // 5) Last Modified (if available)
+//                Text("") // Placeholder for last modified (not applicable for products)
+//                    .frame(width: 120, alignment: .leading)
+//                
+//                // 6) Sequence Number (if available)
+//                Text("") // Placeholder for sequence number (not applicable for products)
+//                    .frame(width: 50, alignment: .leading)
+//                
+//                // 7) Quantity (if available)
+//                Text("") // Placeholder for quantity (not applicable for products)
+//                    .frame(width: 60, alignment: .leading)
+            }
+            .foregroundColor(.primary)
+            .contentShape(Rectangle()) // Make the entire row tappable
+            //.background(selectedProductId == product.id ? Color.blue.opacity(0.1) : Color.clear)
+            .cornerRadius(4)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
