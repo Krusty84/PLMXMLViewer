@@ -118,11 +118,18 @@ struct PLMXMLGeneralData: Identifiable {
     var time: String
 }
 
-//<Header id="id1" traverseRootRefs="#id5" transferContext="ConfiguredDataFilesExportDefault"></Header>
+
 struct PLMXMLTransferContextlData: Identifiable {
     let id: String
     var transferContext: String
 }
+
+struct SiteData: Identifiable {
+    let id: String
+    var name: String?
+    var siteId: String?
+}
+
 // MARK: - BOMParser
 
 /// Parses PLMXML to build a hierarchical BOM, linking Occurrence → ProductRevision → Product.
@@ -134,8 +141,8 @@ class BOMParser: NSObject, XMLParserDelegate {
     private(set) var productViews: [ProductView] = []
     private(set) var revisionRulesDict: [String: RevisionRuleData] = [:]
     private(set) var plmxmlGeneralDataDict: [String: PLMXMLGeneralData] = [:]
+    private(set) var sitesDict: [String: SiteData] = [:]
     private(set) var plmxmlTransferContextDataDict: [String: PLMXMLTransferContextlData] = [:]
-    
     private(set) var productRevisionsDict: [String: ProductRevisionData] = [:]
     private(set) var productDict: [String: ProductData] = [:]
     private(set) var occurrencesDict: [String: ProductView.Occurrence] = [:]
@@ -151,7 +158,7 @@ class BOMParser: NSObject, XMLParserDelegate {
     private var currentForm: FormData?
     private var currentDataSet: DataSetData?
     private var currentExternalFile: ExternalFileData?
-    /// Are we inside <UserData type="AttributesInContext"> for an occurrence?
+    private var currentSite: SiteData?
     private var insideAttributesInContext = false
     
     private var foundCharactersBuffer = ""
@@ -198,6 +205,7 @@ class BOMParser: NSObject, XMLParserDelegate {
         associatedAttachmentsDict.removeAll()
         formsDict.removeAll()
         dataSetsDict.removeAll()
+        sitesDict.removeAll()
         externalFilesDict.removeAll()
         
         currentProductView     = nil
@@ -207,7 +215,7 @@ class BOMParser: NSObject, XMLParserDelegate {
         currentForm = nil
         currentDataSet = nil
         currentExternalFile = nil
-        
+        currentSite = nil
         insideAttributesInContext = false
         foundCharactersBuffer = ""
         //
@@ -222,7 +230,15 @@ class BOMParser: NSObject, XMLParserDelegate {
         foundCharactersBuffer = ""
         logger.log("Started parsing element: \(elementName)")
         switch elementName {
-                // 1) PLMXML Info
+            case "Site":
+                  let id = attributeDict["id"]
+                  var site = SiteData(id: id ?? "")
+                  site.name = attributeDict["name"]
+                  site.siteId = attributeDict["siteId"]
+                  sitesDict[id ?? ""] = site
+                  currentSite = site
+                  logger.log("Parsed Site: id=\(id), name=\(site.name ?? "nil"), siteId=\(site.siteId ?? "nil").")
+                
             case "PLMXML":
                 let schemaVersion   = attributeDict["schemaVersion"] ?? ""
                 let date = attributeDict["date"] ?? "(No Name)"
@@ -584,6 +600,7 @@ class BOMModel: ObservableObject {
     @Published var revisionRules: [String: RevisionRuleData] = [:]
     @Published var plmxmlInfo: [String: PLMXMLGeneralData] = [:]
     @Published var plmxmlTransferContextInfo: [String: PLMXMLTransferContextlData] = [:]
+    @Published var sitesDict: [String: SiteData] = [:]
     /// The name of the last opened file, e.g. "MyAssembly.xml"
     @Published var lastOpenedFileName: String = "(No file opened)"
     @Published var dataSetsDict: [String: DataSetData] = [:]
@@ -616,6 +633,7 @@ class BOMModel: ObservableObject {
         revisionRules = parser.revisionRulesDict
         plmxmlInfo = parser.plmxmlGeneralDataDict
         plmxmlTransferContextInfo = parser.plmxmlTransferContextDataDict
+        sitesDict = parser.sitesDict
         dataSetsDict = parser.dataSetsDict
         externalFilesDict = parser.externalFilesDict
         productDict = parser.productDict
@@ -648,6 +666,7 @@ struct BOMView: View {
     @State private var selectedFormId: String?
     //
     @State private var selectedTab: Int = 0
+    @State private var isGeneralExpanded = true
     var body: some View {
         HStack(spacing: 0) {
             // Left: BOM list
@@ -661,22 +680,43 @@ struct BOMView: View {
                         ForEach(model.productViews) { pv in
                             let ruleNames = (pv.ruleRefs ?? []).compactMap { model.revisionRules[$0]?.name }
                             let appliedRevRule = ruleNames.isEmpty ? "No Revision Rule" : ruleNames.joined(separator: ", ")
-                            Section() {
-                                ForEach(Array(model.plmxmlInfo.keys), id: \.self) { key in
-                                    if let plmxmlData = model.plmxmlInfo[key]{
-                                        (Text("Exported from: ").bold() + Text("\(plmxmlData.author) ").font(.body))
-                                        ForEach(Array(model.plmxmlTransferContextInfo.keys), id: \.self) { contextKey in
-                                            if let plmxmlContextData = model.plmxmlTransferContextInfo[contextKey] {
-                                                Text("PLMXML Rules: ").bold() + Text("\(plmxmlContextData.transferContext)").font(.body)
+                            DisclosureGroup(isExpanded: $isGeneralExpanded) {
+                                    ForEach(Array(model.plmxmlInfo.keys), id: \.self) { key in
+                                        if let plmxmlData = model.plmxmlInfo[key]{
+                                            (Text("Exported from: ").bold() + Text("\(plmxmlData.author) ").font(.body))
+                                            ForEach(Array(model.plmxmlTransferContextInfo.keys), id: \.self) { contextKey in
+                                                if let plmxmlContextData = model.plmxmlTransferContextInfo[contextKey] {
+                                                    Text("PLMXML Rules: ").bold() + Text("\(plmxmlContextData.transferContext)").font(.body)
+                                                }
+                                            }
+                                            (Text("Date: ").bold() + Text("\(plmxmlData.date) ").font(.body)) +
+                                            (Text("Time: ").bold() + Text("\(plmxmlData.time)").font(.body))
+                                            (Text("Configured by: ").bold() + Text("\(appliedRevRule) ").font(.body))
+                                            ForEach(model.sitesDict.values.sorted(by: { $0.id < $1.id })) { site in
+                                                HStack(spacing: 10) { // Adjust the spacing value as needed
+                                                    (Text("Site Id: ").bold() + Text("\(site.siteId ?? "Unknown")").font(.body))
+                                                    (Text("Site Name: ").bold() + Text("\(site.name ?? "Unknown")").font(.body))
+                                                
+                                                }
                                             }
                                         }
-                                        (Text("Date: ").bold() + Text("\(plmxmlData.date) ").font(.body)) +
-                                        (Text("Time: ").bold() + Text("\(plmxmlData.time)").font(.body))
-                                        (Text("Configured by: ").bold() + Text("\(appliedRevRule) ").font(.body))
-                                        
                                     }
-                                }
-                            }
+                                
+                                   } label: {
+                                       Text("PLMXML Overview")
+                                           .font(.headline)
+                                       //.padding()
+                                           .frame(maxWidth: .infinity, alignment: .leading)
+                                       //.background(Color.orange.opacity(100))
+                                           .background(Color(nsColor: .windowBackgroundColor))
+                                       //.cornerRadius(8)
+                                           .onTapGesture {
+                                               withAnimation {
+                                                   isGeneralExpanded.toggle()
+                                               }
+                                           }
+                                   }
+                                   .padding(.bottom, 2)
                             Section {
                                 // Tab Picker
                                 Picker("", selection: $selectedTab) {
@@ -803,10 +843,13 @@ struct BOMView: View {
 struct ColumnHeaderOccurrenceView: View {
     var body: some View {
         HStack(spacing: 8) {
+            Text("Item Id")
+                .frame(width: 150, alignment: .leading) // Use .leading
+            
             Text("Name")
                 .frame(width: 150, alignment: .leading) // Use .leading
             
-            Text("SubType")
+            Text("Type")
                 .frame(width: 80, alignment: .leading) // Use .leading
             
             Text("Rev")
@@ -817,10 +860,7 @@ struct ColumnHeaderOccurrenceView: View {
             
             Text("Seq#")
                 .frame(width: 50, alignment: .leading) // Use .leading
-            
-            Text("ProductId")
-                .frame(width: 150, alignment: .leading) // Use .leading
-            
+        
             Text("Quantity")
                 .frame(width: 60, alignment: .leading) // Use .leading
         }
@@ -851,6 +891,11 @@ struct OccurrenceListItem: View {
                 selectedOccurrence = occurrence
             }) {
                 HStack(spacing: 8) { // Add spacing between columns
+                    // 6) ProductId
+                    Text(occurrence.productId ?? "")
+                        .frame(width: 150, alignment: .leading)
+                        .foregroundColor(.purple)
+                    
                     // 1) DisplayName
                     Text(occurrence.displayName ?? occurrence.id)
                         .frame(width: 150, alignment: .leading)
@@ -871,12 +916,7 @@ struct OccurrenceListItem: View {
                     Text(occurrence.sequenceNumber ?? "")
                         .frame(width: 50, alignment: .leading)
                         .foregroundColor(.blue)
-                    
-                    // 6) ProductId
-                    Text(occurrence.productId ?? "")
-                        .frame(width: 150, alignment: .leading)
-                        .foregroundColor(.purple)
-                    
+                                        
                     // 7) Quantity
                     Text(occurrence.quantity ?? "")
                         .frame(width: 60, alignment: .leading)
@@ -909,23 +949,23 @@ struct OccurrenceDetailView: View {
                 // Details Section (expanded by default)
                 DisclosureGroup(isExpanded: $isDetailsExpanded) {
                     Group {
-                        Text("ID: \(occurrence.id)")
+//                        Text("ID: \(occurrence.id)")
+//                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Item Id: \(occurrence.productId ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Revision: \(occurrence.revision ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Name: \(occurrence.name ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("DisplayName: \(occurrence.displayName ?? "-")")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("SubType: \(occurrence.subType ?? "-")")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("Revision: \(occurrence.revision ?? "-")")
+//                        Text("DisplayName: \(occurrence.displayName ?? "-")")
+//                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Type: \(occurrence.subType ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("LastModDate: \(occurrence.lastModDate ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("SequenceNumber: \(occurrence.sequenceNumber ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Quantity: \(occurrence.quantity ?? "-")")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("ProductId: \(occurrence.productId ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Child Occurrences: \(occurrence.subOccurrences.count)")
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1214,13 +1254,13 @@ struct DataSetRow: View {
 struct ColumnHeaderProductView: View {
     var body: some View {
         HStack(spacing: 8) {
-            Text("ProductId")
+            Text("Item Id")
                 .frame(width: 150, alignment: .leading) // Use .leading
             
             Text("Name")
                 .frame(width: 150, alignment: .leading) // Use .leading
             
-            Text("SubType")
+            Text("Type")
                 .frame(width: 80, alignment: .leading) // Use .leading
             // .padding(.vertical, 4)
         }.font(.headline)
@@ -1268,13 +1308,13 @@ struct ProductDetailView: View {
                         .font(.headline)
                         .padding(.bottom, 5)
                     
-                    Text("ID: \(product.id)")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Product ID: \(product.productId ?? "-")")
+//                    Text("ID: \(product.id)")
+//                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Item Id: \(product.productId ?? "-")")
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Name: \(product.name ?? "-")")
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("SubType: \(product.subType ?? "-")")
+                    Text("Type: \(product.subType ?? "-")")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 
@@ -1294,7 +1334,7 @@ struct ProductDetailView: View {
                                 .font(.subheadline)
                                 .bold()
                             Text("Name: \(revision.name ?? "-")")
-                            Text("SubType: \(revision.subType ?? "-")")
+                            Text("Type: \(revision.subType ?? "-")")
                             Text("Last Modified: \(revision.lastModDate ?? "-")")
                             
                             // Revision Attributes Section (only if userAttributes has valid data)
@@ -1398,8 +1438,8 @@ struct DataSetDetailView: View {
                         .font(.headline)
                         .padding(.bottom, 5)
                     
-                    Text("ID: \(dataSet.id)")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+//                    Text("ID: \(dataSet.id)")
+//                        .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Name: \(dataSet.name ?? "-")")
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Type: \(dataSet.type ?? "-")")
@@ -1446,11 +1486,11 @@ struct DataSetDetailView: View {
 struct ColumnHeaderFormView: View {
     var body: some View {
         HStack(spacing: 8) {
-            Text("Form ID")
-                .frame(width: 150, alignment: .leading)
+//            Text("Form ID")
+//                .frame(width: 150, alignment: .leading)
             Text("Name")
                 .frame(width: 150, alignment: .leading)
-            Text("SubType")
+            Text("Type")
                 .frame(width: 80, alignment: .leading)
         }
         .font(.headline)
@@ -1467,8 +1507,8 @@ struct FormListItem: View {
         }) {
             HStack(spacing: 8) {
                 // 1) Form ID
-                Text(form.id)
-                    .frame(width: 150, alignment: .leading)
+//                Text(form.id)
+//                    .frame(width: 150, alignment: .leading)
                 // 2) Form Name
                 Text(form.name ?? "Unnamed Form")
                     .frame(width: 150, alignment: .leading)
@@ -1498,13 +1538,13 @@ struct FormDetailView: View {
                         .font(.headline)
                         .padding(.bottom, 5)
                     
-                    Text("ID: \(form.id)")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+//                    Text("ID: \(form.id)")
+//                        .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Name: \(form.name ?? "-")")
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("SubType: \(form.subType ?? "-")")
+                    Text("Type: \(form.subType ?? "-")")
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("SubClass: \(form.subClass ?? "-")")
+                    Text("Class: \(form.subClass ?? "-")")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 
