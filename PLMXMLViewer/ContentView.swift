@@ -644,6 +644,8 @@ struct BOMView: View {
     /// Currently selected occurrence
     @State private var selectedOccurrence: ProductView.Occurrence? = nil
     @State private var selectedProductId: String?
+    @State private var selectedDataSetId: String?
+    @State private var selectedFormId: String?
     //
     @State private var selectedTab: Int = 0
     var body: some View {
@@ -680,7 +682,8 @@ struct BOMView: View {
                                 Picker("", selection: $selectedTab) {
                                     Text("xBOM").tag(0)
                                     Text("Items").tag(1)
-                                    Text("Tab 3").tag(2)
+                                    Text("Datasets").tag(2)
+                                    Text("Forms").tag(3)
                                 }
                                 .pickerStyle(SegmentedPickerStyle())
                                 .padding(.horizontal)
@@ -698,15 +701,20 @@ struct BOMView: View {
                                         )
                                     }
                                 case 1:
-                                    // Tab 2: Show occurrences with subType == "TypeA"
-                                        //EmptyView()
                                         ColumnHeaderProductView()
                                         ForEach(model.productDict.values.sorted(by: { $0.id < $1.id })) { product in
                                                     ProductListItem(product: product, selectedProductId: $selectedProductId)
                                                 }
                                 case 2:
-                                    // Tab 3: Show occurrences with subType == "TypeB"
-                                        EmptyView()
+                                        ColumnHeaderDataSetView()
+                                        ForEach(model.dataSetsDict.values.sorted(by: { $0.id < $1.id })) { dataSet in
+                                                DataSetListItem(dataSet: dataSet, selectedDataSetId: $selectedDataSetId)
+                                            }
+                                case 3:
+                                        ColumnHeaderFormView()
+                                            ForEach(model.formsDict.values.sorted(by: { $0.id < $1.id })) { form in
+                                                FormListItem(form: form, selectedFormId: $selectedFormId)
+                                            }
                                 default:
                                     EmptyView()
                                 }
@@ -740,6 +748,24 @@ struct BOMView: View {
                                         Text("No Product Selected")
                                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     }
+                        case 2:
+                            if let selectedDataSetId = selectedDataSetId,
+                               let dataSet = model.dataSetsDict[selectedDataSetId] {
+                                DataSetDetailView(dataSet: dataSet, model: model)
+                                    .frame(minWidth: 400)
+                            } else {
+                                Text("No Dataset Selected")
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
+                        case 3:
+                            if let selectedFormId = selectedFormId,
+                                                  let form = model.formsDict[selectedFormId] {
+                                            FormDetailView(form: form, model: model)
+                                                .frame(minWidth: 400)
+                                        } else {
+                                            Text("No Form Selected")
+                                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        }
                         default:
                             EmptyView()
                     }
@@ -1270,6 +1296,27 @@ struct ProductDetailView: View {
                             Text("Name: \(revision.name ?? "-")")
                             Text("SubType: \(revision.subType ?? "-")")
                             Text("Last Modified: \(revision.lastModDate ?? "-")")
+                            
+                            // Revision Attributes Section (only if userAttributes has valid data)
+                            if !revision.userAttributes.isEmpty && revision.userAttributes.values.contains(where: { !$0.isEmpty }) {
+                                Divider()
+                                    .padding(.vertical, 4)
+                                
+                                Text("Revision Attributes")
+                                    .font(.subheadline)
+                                    .bold()
+                                
+                                ForEach(Array(revision.userAttributes.keys.sorted()), id: \.self) { key in
+                                    if let value = revision.userAttributes[key], !value.isEmpty {
+                                        HStack {
+                                            Text("\(key):")
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            Text(value)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    }
+                                }
+                            }
                         }
                         .padding(.vertical, 4)
                     }
@@ -1291,6 +1338,193 @@ struct ProductDetailView: View {
                         } else {
                             Text("- Unknown DataSet id=\(dsId)")
                                 .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+struct ColumnHeaderDataSetView: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Name")
+                .frame(width: 150, alignment: .leading)
+            Text("Type")
+                .frame(width: 80, alignment: .leading)
+        }
+        .font(.headline)
+    }
+}
+
+struct DataSetListItem: View {
+    let dataSet: DataSetData
+    @Binding var selectedDataSetId: String?
+    
+    var body: some View {
+        Button(action: {
+            selectedDataSetId = dataSet.id
+        }) {
+            HStack(spacing: 8) {
+                // 1) DataSet Name
+                Text(dataSet.name ?? "Unnamed DataSet")
+                    .frame(width: 150, alignment: .leading)
+                // 2) DataSet Type
+                Text(dataSet.type ?? "")
+                    .frame(width: 80, alignment: .leading)
+            }
+            .foregroundColor(.primary)
+            .contentShape(Rectangle()) // Make the entire row tappable
+            //.background(selectedDataSetId == dataSet.id ? Color.blue.opacity(0.1) : Color.clear)
+            .cornerRadius(4)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct DataSetDetailView: View {
+    let dataSet: DataSetData
+    let model: BOMModel
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                // Dataset Details Section
+                Group {
+                    Text("DataSet Details")
+                        .font(.headline)
+                        .padding(.bottom, 5)
+                    
+                    Text("ID: \(dataSet.id)")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Name: \(dataSet.name ?? "-")")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Type: \(dataSet.type ?? "-")")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Version: \(dataSet.version ?? "-")")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                
+                // Associated Files Section
+                if !dataSet.memberRefs.isEmpty {
+                    Divider()
+                        .padding(.vertical, 8)
+                    
+                    Text("Associated Files")
+                        .font(.headline)
+                        .padding(.bottom, 5)
+                    
+                    ForEach(dataSet.memberRefs, id: \.self) { fileId in
+                        if let ef = model.externalFilesDict[fileId] {
+                            HStack {
+                                if let path = ef.fullPath {
+                                    FileRow(filePath: path)
+                                        .padding(.leading, 8)
+                                        .font(.caption2)
+                                } else {
+                                    Text("File: \(ef.locationRef ?? "-") [\(ef.format ?? "")]")
+                                        .font(.caption)
+                                }
+                            }
+                        } else {
+                            Text("Unknown ExternalFile id=\(fileId)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+struct ColumnHeaderFormView: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Form ID")
+                .frame(width: 150, alignment: .leading)
+            Text("Name")
+                .frame(width: 150, alignment: .leading)
+            Text("SubType")
+                .frame(width: 80, alignment: .leading)
+        }
+        .font(.headline)
+    }
+}
+
+struct FormListItem: View {
+    let form: FormData
+    @Binding var selectedFormId: String?
+  
+    var body: some View {
+        Button(action: {
+            selectedFormId = form.id
+        }) {
+            HStack(spacing: 8) {
+                // 1) Form ID
+                Text(form.id)
+                    .frame(width: 150, alignment: .leading)
+                // 2) Form Name
+                Text(form.name ?? "Unnamed Form")
+                    .frame(width: 150, alignment: .leading)
+                // 3) Form SubType
+                Text(form.subType ?? "")
+                    .frame(width: 80, alignment: .leading)
+            }
+            .foregroundColor(.primary)
+            .contentShape(Rectangle()) // Make the entire row tappable
+            //.background(selectedFormId == form.id ? Color.blue.opacity(0.1) : Color.clear)
+            .cornerRadius(4)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct FormDetailView: View {
+    let form: FormData
+    let model: BOMModel
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                // Form Details Section
+                Group {
+                    Text("Form Details")
+                        .font(.headline)
+                        .padding(.bottom, 5)
+                    
+                    Text("ID: \(form.id)")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Name: \(form.name ?? "-")")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("SubType: \(form.subType ?? "-")")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("SubClass: \(form.subClass ?? "-")")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                
+                // Form Attributes Section
+                if !form.userAttributes.isEmpty {
+                    Divider()
+                        .padding(.vertical, 8)
+                    
+                    Text("Form Attributes")
+                        .font(.headline)
+                        .padding(.bottom, 5)
+                    
+                    ForEach(Array(form.userAttributes.keys.sorted()), id: \.self) { key in
+                        if let value = form.userAttributes[key], !value.isEmpty {
+                            HStack {
+                                Text("\(key):")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Text(value)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                     }
                 }
