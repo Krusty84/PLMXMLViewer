@@ -893,7 +893,16 @@ struct OccurrenceDetailView: View {
                 } label: {
                     Text("Details")
                         .font(.headline)
+                    //.padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    //.background(Color.orange.opacity(100))
+                        .background(Color(nsColor: .windowBackgroundColor))
+                    //.cornerRadius(8)
+                        .onTapGesture {
+                            withAnimation {
+                                isDetailsExpanded.toggle()
+                            }
+                        }
                 }
                 .padding(.bottom, 8)
                 
@@ -914,7 +923,16 @@ struct OccurrenceDetailView: View {
                         } label: {
                             Text("Revision Attributes")
                                 .font(.headline)
+                            //.padding()
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                            //.background(Color.orange.opacity(100))
+                                .background(Color(nsColor: .windowBackgroundColor))
+                            //.cornerRadius(8)
+                                .onTapGesture {
+                                    withAnimation {
+                                        isRevisionAttributesExpanded.toggle()
+                                    }
+                                }
                         }
                         .padding(.bottom, 8)
                     }
@@ -975,7 +993,16 @@ struct OccurrenceDetailView: View {
                     } label: {
                         Text("Form Attributes")
                             .font(.headline)
+                        //.padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        //.background(Color.orange.opacity(100))
+                            .background(Color(nsColor: .windowBackgroundColor))
+                        //.cornerRadius(8)
+                            .onTapGesture {
+                                withAnimation {
+                                    isFormAttributesExpanded.toggle()
+                                }
+                            }
                     }
                     .padding(.bottom, 8)
                 }
@@ -995,7 +1022,16 @@ struct OccurrenceDetailView: View {
                     } label: {
                         Text("Datasets")
                             .font(.headline)
+                        //.padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        //.background(Color.orange.opacity(100))
+                            .background(Color(nsColor: .windowBackgroundColor))
+                        //.cornerRadius(8)
+                            .onTapGesture {
+                                withAnimation {
+                                    isDatasetsExpanded.toggle()
+                                }
+                            }
                     }
                     .padding(.bottom, 8)
                 }
