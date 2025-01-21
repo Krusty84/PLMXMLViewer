@@ -17,21 +17,12 @@ struct ProductView: Identifiable {
     var ruleRefs: [String]?
     var primaryOccurrenceRef: String?
     var rootRefs: [String]?
-    
-    /// Once parsed and built, these become the top-level occurrences in the BOM.
     var occurrences: [Occurrence] = []
-    
-    /// Occurrence = a node in the BOM hierarchy.
     struct Occurrence: Identifiable {
         let id: String
-        
-        /// For example "#id24" -> references <ProductRevision id="id24">
         var instancedRef: String?
-        
-        /// Child occurrence IDs (from occurrenceRefs="id57 id65")
+        var associatedAttachmentRefs: [String] = []
         var occurrenceRefIDs: [String] = []
-        
-        /// After post-processing, these are the nested child occurrences.
         var subOccurrences: [Occurrence] = []
         
         // Display / metadata from ProductRevision
@@ -48,26 +39,39 @@ struct ProductView: Identifiable {
         // NEW: The productId from <Product productId="...">
         var productId: String?
         
+        // Dynamic attributes from <UserData>
+        var userAttributes: [String: String] = [:]
         // Optionally store references to DataSets
         var dataSetRefs: [String] = []
     }
 }
 
+struct AssociatedAttachment: Identifiable {
+    let id: String
+    var attachmentRef: String? // References a Form
+    var role: String?
+}
+
+struct FormData: Identifiable {
+    let id: String
+    var name: String?
+    var subType: String?
+    var subClass: String?
+    var userAttributes: [String: String] = [:]
+}
+
 /// Holds data from <ProductRevision> elements.
 struct ProductRevisionData: Identifiable {
     let id: String
-    
     var name:         String?
     var subType:      String?
     var revision:     String?
     var objectString: String?
     var lastModDate:  String?
-    
-    /// The `masterRef` references a <Product id="...">. We store that ID (stripped of '#').
     var masterRef: String?
-    
-    // DataSet references (from <AssociatedDataSet> or similar)
     var dataSetRefs: [String] = []
+    // Dynamic attributes from <UserData>
+    var userAttributes: [String: String] = [:]
 }
 
 /// Holds data from <Product> elements (where productId is stored).
@@ -132,9 +136,11 @@ class BOMParser: NSObject, XMLParserDelegate {
     private(set) var plmxmlGeneralDataDict: [String: PLMXMLGeneralData] = [:]
     private(set) var plmxmlTransferContextDataDict: [String: PLMXMLTransferContextlData] = [:]
     
-    private var productRevisionsDict: [String: ProductRevisionData] = [:]
+    private(set) var productRevisionsDict: [String: ProductRevisionData] = [:]
     private(set) var productDict: [String: ProductData] = [:]
-    private var occurrencesDict: [String: ProductView.Occurrence] = [:]
+    private(set) var occurrencesDict: [String: ProductView.Occurrence] = [:]
+    private(set) var associatedAttachmentsDict: [String: AssociatedAttachment] = [:]
+    private(set) var formsDict: [String: FormData] = [:]
     
     // MARK: - State while parsing
     
@@ -142,6 +148,7 @@ class BOMParser: NSObject, XMLParserDelegate {
     private var currentOccurrence: ProductView.Occurrence?
     private var currentProductRevision: ProductRevisionData?
     private var currentProduct: ProductData?
+    private var currentForm: FormData?
     private var currentDataSet: DataSetData?
     private var currentExternalFile: ExternalFileData?
     /// Are we inside <UserData type="AttributesInContext"> for an occurrence?
@@ -188,6 +195,8 @@ class BOMParser: NSObject, XMLParserDelegate {
         productRevisionsDict.removeAll()
         productDict.removeAll()
         occurrencesDict.removeAll()
+        associatedAttachmentsDict.removeAll()
+        formsDict.removeAll()
         dataSetsDict.removeAll()
         externalFilesDict.removeAll()
         
@@ -195,6 +204,7 @@ class BOMParser: NSObject, XMLParserDelegate {
         currentOccurrence      = nil
         currentProductRevision = nil
         currentProduct         = nil
+        currentForm = nil
         currentDataSet = nil
         currentExternalFile = nil
         
@@ -255,24 +265,27 @@ class BOMParser: NSObject, XMLParserDelegate {
                 // 4) Occurrence
             case "Occurrence":
                 let id = attributeDict["id"] ?? ""
-                var occ = ProductView.Occurrence(id: id)
-                
-                if let instancedRef = attributeDict["instancedRef"] {
-                    occ.instancedRef = instancedRef.hasPrefix("#")
-                    ? String(instancedRef.dropFirst())
-                    : instancedRef
-                }
-                
-                if let refsString = attributeDict["occurrenceRefs"] {
-                    let childIDs = refsString.components(separatedBy: " ")
-                        .map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
-                    occ.occurrenceRefIDs = childIDs
-                }
-                
-                occurrencesDict[id] = occ
-                currentOccurrence = occ
-                //
-                logger.log("Parsed Occurrence: id=\(id), instancedRef=\(occ.instancedRef ?? "nil"), occurrenceRefIDs=\(occ.occurrenceRefIDs).")
+                    var occ = ProductView.Occurrence(id: id)
+
+                    if let instancedRef = attributeDict["instancedRef"] {
+                        occ.instancedRef = instancedRef.hasPrefix("#") ? String(instancedRef.dropFirst()) : instancedRef
+                    }
+
+                    if let refsString = attributeDict["associatedAttachmentRefs"] {
+                        let attachmentRefs = refsString.components(separatedBy: " ")
+                            .map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+                        occ.associatedAttachmentRefs = attachmentRefs
+                    }
+
+                    if let refsString = attributeDict["occurrenceRefs"] {
+                        let childIDs = refsString.components(separatedBy: " ")
+                            .map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+                        occ.occurrenceRefIDs = childIDs
+                    }
+
+                    occurrencesDict[id] = occ
+                    currentOccurrence = occ
+                    logger.log("Parsed Occurrence: id=\(id), instancedRef=\(occ.instancedRef ?? "nil"), associatedAttachmentRefs=\(occ.associatedAttachmentRefs), occurrenceRefIDs=\(occ.occurrenceRefIDs).")
                 
                 // 5) ProductRevision
             case "ProductRevision":
@@ -322,45 +335,62 @@ class BOMParser: NSObject, XMLParserDelegate {
             case "UserData":
                 // If type="AttributesInContext", we watch for SequenceNumber
                 if let typeAttr = attributeDict["type"], typeAttr == "AttributesInContext" {
-                    insideAttributesInContext = true
-                    //
-                    logger.log("Entered UserData block with type=AttributesInContext.")
+                        insideAttributesInContext = true
+                        logger.log("Entered UserData block with type=AttributesInContext.")
+                    } else if let typeAttr = attributeDict["type"], typeAttr == "FormAttributes" {
+                        // Handle FormAttributes specifically
+                        logger.log("Entered UserData block with type=FormAttributes.")
+                    }
+                
+            case "AssociatedAttachment":
+                let id = attributeDict["id"] ?? ""
+                var attachment = AssociatedAttachment(id: id)
+                
+                if let attachmentRef = attributeDict["attachmentRef"] {
+                    attachment.attachmentRef = attachmentRef.hasPrefix("#") ? String(attachmentRef.dropFirst()) : attachmentRef
                 }
+                
+                attachment.role = attributeDict["role"]
+                associatedAttachmentsDict[id] = attachment
+                logger.log("Parsed AssociatedAttachment: id=\(id), attachmentRef=\(attachment.attachmentRef ?? "nil"), role=\(attachment.role ?? "nil").")
+                
+            case "Form":
+                let id = attributeDict["id"] ?? ""
+                var form = FormData(id: id)
+                form.name = attributeDict["name"]
+                form.subType = attributeDict["subType"]
+                form.subClass = attributeDict["subClass"]
+                formsDict[id] = form
+                currentForm = form
+                logger.log("Parsed Form: id=\(id), name=\(form.name ?? "nil"), subType=\(form.subType ?? "nil").")
                 
                 // 9) UserValue
             case "UserValue":
-                // Could be sequenceNumber for an Occurrence
-                //            if insideAttributesInContext, let occ = currentOccurrence {
-                //                if let title = attributeDict["title"], title == "SequenceNumber" {
-                //                    let val = attributeDict["value"] ?? ""
-                //                    var updatedOcc = occ
-                //                    updatedOcc.sequenceNumber = val
-                //                    occurrencesDict[occ.id] = updatedOcc
-                //                    currentOccurrence = updatedOcc
-                //                }
-                //            }
                 if insideAttributesInContext, let occ = currentOccurrence {
                     if let title = attributeDict["title"],
                        let val   = attributeDict["value"] {
+                        var updatedOcc = occ
                         switch title {
                             case "SequenceNumber":
                                 // existing logic for SequenceNumber
-                                var updatedOcc = occ
                                 updatedOcc.sequenceNumber = val
                                 occurrencesDict[occ.id] = updatedOcc
                                 currentOccurrence = updatedOcc
                                 //
                                 logger.log("Updated Occurrence with SequenceNumber: \(val).")
                             case "Quantity":  // <-- new attribute
-                                var updatedOcc = occ
                                 updatedOcc.quantity = val
                                 occurrencesDict[occ.id] = updatedOcc
                                 currentOccurrence = updatedOcc
                                 //
                                 logger.log("Updated Occurrence with Quantity: \(val).")
                             default:
-                                break
+                                // Handle dynamic attributes for Occurrence
+                                updatedOcc.userAttributes[title] = val
+                                logger.log("Updated Occurrence with dynamic attribute: \(title) = \(val).")
                         }
+                        occurrencesDict[occ.id] = updatedOcc
+                        currentOccurrence = updatedOcc
                     }
                 }
                 // Could also be object_string / last_mod_date for ProductRevision
@@ -371,12 +401,24 @@ class BOMParser: NSObject, XMLParserDelegate {
                     switch title {
                         case "object_string": updatedPR.objectString = val
                         case "last_mod_date": updatedPR.lastModDate  = val
-                        default: break
+                        default:
+                            updatedPR.userAttributes[title] = val
+                            logger.log("Updated ProductRevision with dynamic attribute: \(title) = \(val).")
                     }
+                    productRevisionsDict[pr.id] = updatedPR // Update the dictionary
                     currentProductRevision = updatedPR
                     //
                     logger.log("Updated ProductRevision with \(title): \(val).")
                 }
+                //
+                if let form = currentForm, let title = attributeDict["title"], let val = attributeDict["value"] {
+                        var updatedForm = form
+                        updatedForm.userAttributes[title] = val
+                        formsDict[form.id] = updatedForm
+                        currentForm = updatedForm
+                        logger.log("Updated Form with attribute: \(title) = \(val).")
+                    }
+                
             case "DataSet":
                 let id = attributeDict["id"] ?? ""
                 var ds = DataSetData(id: id)
@@ -547,10 +589,16 @@ class BOMModel: ObservableObject {
     @Published var dataSetsDict: [String: DataSetData] = [:]
     @Published var externalFilesDict: [String: ExternalFileData] = [:]
     @Published var productDict: [String: ProductData] = [:] // Expose productDict
+    @Published var productRevisionsDict: [String: ProductRevisionData] = [:]
+    @Published var associatedAttachmentsDict: [String: AssociatedAttachment] = [:]
+    @Published var formsDict: [String: FormData] = [:]
     //
     private let logger = Logger.shared
     var logFileURL: URL? {
             return Logger.shared.logFileURL
+        }
+    func getProductRevision(byID id: String) -> ProductRevisionData? {
+            return productRevisionsDict[id]
         }
     /// Helper method for loading from data, using BOMParser.
     //    func loadPLMXML(from data: Data) {
@@ -571,6 +619,9 @@ class BOMModel: ObservableObject {
         dataSetsDict = parser.dataSetsDict
         externalFilesDict = parser.externalFilesDict
         productDict = parser.productDict
+        productRevisionsDict = parser.productRevisionsDict
+        associatedAttachmentsDict = parser.associatedAttachmentsDict
+        formsDict = parser.formsDict
         lastOpenedFileName = fileName
         logger.log("Finished processing \(fileName) with \(views.count) ProductViews found.")
     }
@@ -805,45 +856,148 @@ struct OccurrenceDetailView: View {
     let occurrence: ProductView.Occurrence
     let model: BOMModel
     
+    // State variables to control section expansion
+    @State private var isDetailsExpanded = true
+    @State private var isRevisionAttributesExpanded = false
+    @State private var isFormAttributesExpanded = false
+    @State private var isDatasetsExpanded = false
+    
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) { // Reduced spacing
-                Text("Details")
-                    .font(.headline)
-                    .padding(.bottom, 5)
+            VStack(alignment: .leading, spacing: 8) {
+                // Details Section (expanded by default)
+                DisclosureGroup(isExpanded: $isDetailsExpanded) {
+                    Group {
+                        Text("ID: \(occurrence.id)")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Name: \(occurrence.name ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("DisplayName: \(occurrence.displayName ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("SubType: \(occurrence.subType ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Revision: \(occurrence.revision ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("LastModDate: \(occurrence.lastModDate ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("SequenceNumber: \(occurrence.sequenceNumber ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Quantity: \(occurrence.quantity ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("ProductId: \(occurrence.productId ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Child Occurrences: \(occurrence.subOccurrences.count)")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 8)
+                    }
+                } label: {
+                    Text("Details")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.bottom, 8)
                 
-                // Details Section
-                Group {
-                    Text("ID: \(occurrence.id)")
-                    Text("Name: \(occurrence.name ?? "-")")
-                    Text("DisplayName: \(occurrence.displayName ?? "-")")
-                    Text("SubType: \(occurrence.subType ?? "-")")
-                    Text("Revision: \(occurrence.revision ?? "-")")
-                    Text("LastModDate: \(occurrence.lastModDate ?? "-")")
-                    Text("SequenceNumber: \(occurrence.sequenceNumber ?? "-")")
-                    Text("Quantity: \(occurrence.quantity ?? "-")")
-                    Text("ProductId: \(occurrence.productId ?? "-")")
+                // Revision Attributes Section
+                if let instancedRef = occurrence.instancedRef,
+                   let productRevision = model.productRevisionsDict[instancedRef] {
+                    let validAttributes = productRevision.userAttributes.filter { !$0.value.isEmpty }
+                    if !validAttributes.isEmpty {
+                        DisclosureGroup(isExpanded: $isRevisionAttributesExpanded) {
+                            ForEach(Array(validAttributes.keys.sorted()), id: \.self) { key in
+                                HStack {
+                                    Text("\(key):")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text(validAttributes[key] ?? "-")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        } label: {
+                            Text("Revision Attributes")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.bottom, 8)
+                    }
                 }
                 
-                // Child Occurrences
-                Text("Child Occurrences: \(occurrence.subOccurrences.count)")
-                    .padding(.top, 8)
+                // Form Attributes Section
+                if !occurrence.associatedAttachmentRefs.isEmpty {
+                    DisclosureGroup(isExpanded: $isFormAttributesExpanded) {
+                        ForEach(occurrence.associatedAttachmentRefs, id: \.self) { attachmentRef in
+                            // Clean the attachmentRef (remove '#' prefix)
+                            let cleanedAttachmentRef = attachmentRef.hasPrefix("#") ? String(attachmentRef.dropFirst()) : attachmentRef
+                            
+                            // Look up the AssociatedAttachment
+                            if let attachment = model.associatedAttachmentsDict[cleanedAttachmentRef] {
+                                // Clean the attachmentRef (remove '#' prefix)
+                                if let formRef = attachment.attachmentRef {
+                                    let cleanedFormRef = formRef.hasPrefix("#") ? String(formRef.dropFirst()) : formRef
+                                    
+                                    // Look up the Form using the cleanedFormRef
+                                    if let form = model.formsDict[cleanedFormRef] {
+                                        if !form.userAttributes.isEmpty {
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text("Form: \(form.name ?? cleanedFormRef)")
+                                                    .font(.subheadline)
+                                                    .bold()
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                                ForEach(Array(form.userAttributes.keys.sorted()), id: \.self) { key in
+                                                    HStack {
+                                                        Text("\(key):")
+                                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                                        Text(form.userAttributes[key] ?? "-")
+                                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                                    }
+                                                }
+                                            }
+                                            .padding(.vertical, 4)
+                                        } else {
+                                            Text("Form \(cleanedFormRef) has no attributes.")
+                                                .foregroundColor(.secondary)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    } else {
+                                        // For exclude wrong message when has link on DataSet, cause associatedAttachments is the same!
+                                        // Text("Form \(cleanedFormRef) not found.")
+                                        //     .foregroundColor(.secondary)
+                                    }
+                                } else {
+                                    Text("Attachment \(cleanedAttachmentRef) has no form reference.")
+                                        .foregroundColor(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else {
+                                Text("Attachment \(cleanedAttachmentRef) not found.")
+                                    .foregroundColor(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    } label: {
+                        Text("Form Attributes")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.bottom, 8)
+                }
                 
                 // Datasets Section
                 if !occurrence.dataSetRefs.isEmpty {
-                    Divider()
-                        .padding(.vertical, 8)
-                    Text("Datasets")
-                        .font(.headline)
-                        .padding(.bottom, 5)
-                    ForEach(occurrence.dataSetRefs, id: \.self) { dsId in
-                        if let ds = model.dataSetsDict[dsId] {
-                            DataSetRow(dataSet: ds, model: model)
-                        } else {
-                            Text("- Unknown DataSet id=\(dsId)")
-                                .foregroundColor(.secondary)
+                    DisclosureGroup(isExpanded: $isDatasetsExpanded) {
+                        ForEach(occurrence.dataSetRefs, id: \.self) { dsId in
+                            if let ds = model.dataSetsDict[dsId] {
+                                DataSetRow(dataSet: ds, model: model)
+                            } else {
+                                Text("- Unknown DataSet id=\(dsId)")
+                                    .foregroundColor(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
+                    } label: {
+                        Text("Datasets")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.bottom, 8)
                 }
             }
             .padding()
@@ -932,24 +1086,6 @@ struct FileRow: View {
             }
         }
     }
-    
-//    private func saveAs(_ path: String) {
-//        let sourceURL = URL(fileURLWithPath: path)
-//        
-//        let panel = NSSavePanel()
-//        panel.title = "Save File As..."
-//        panel.nameFieldStringValue = sourceURL.lastPathComponent
-//        panel.allowsOtherFileTypes = true
-//        
-//        // If you prefer asynchronous, use panel.begin. For simplicity, use runModal:
-//        if panel.runModal() == .OK, let destination = panel.url {
-//            do {
-//                try FileManager.default.copyItem(at: sourceURL, to: destination)
-//            } catch {
-//                print("Could not copy file: \(error)")
-//            }
-//        }
-//    }
 }
 
 struct DataSetRow: View {
@@ -1032,22 +1168,6 @@ struct ProductListItem: View {
                 // 3) SubType
                 Text(product.subType ?? "")
                     .frame(width: 80, alignment: .leading)
-//                
-//                // 4) Revision (if available)
-//                Text("") // Placeholder for revision (not applicable for products)
-//                    .frame(width: 30, alignment: .leading)
-//                
-//                // 5) Last Modified (if available)
-//                Text("") // Placeholder for last modified (not applicable for products)
-//                    .frame(width: 120, alignment: .leading)
-//                
-//                // 6) Sequence Number (if available)
-//                Text("") // Placeholder for sequence number (not applicable for products)
-//                    .frame(width: 50, alignment: .leading)
-//                
-//                // 7) Quantity (if available)
-//                Text("") // Placeholder for quantity (not applicable for products)
-//                    .frame(width: 60, alignment: .leading)
             }
             .foregroundColor(.primary)
             .contentShape(Rectangle()) // Make the entire row tappable
