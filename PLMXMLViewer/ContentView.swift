@@ -722,13 +722,28 @@ struct BOMView: View {
             // Right: details
             GeometryReader { geometry in
                 VStack {
-                    if let occ = selectedOccurrence {
-                        OccurrenceDetailView(occurrence: occ, model: model)
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                    } else {
-                        Text("No Occurrence Selected")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    switch selectedTab{
+                        case 0:
+                            if let occ = selectedOccurrence {
+                                OccurrenceDetailView(occurrence: occ, model: model)
+                                    .frame(width: geometry.size.width, height: geometry.size.height)
+                            } else {
+                                Text("No Occurrence Selected")
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
+                        case 1:
+                            if let selectedProductId = selectedProductId,
+                                       let product = model.productDict[selectedProductId] {
+                                        ProductDetailView(product: product, model: model)
+                                            .frame(minWidth: 400)
+                                    } else {
+                                        Text("No Product Selected")
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    }
+                        default:
+                            EmptyView()
                     }
+                
                 }
             }
             .frame(minWidth: 300)
@@ -772,7 +787,7 @@ struct ColumnHeaderOccurrenceView: View {
                 .frame(width: 30, alignment: .leading) // Use .leading
             
             Text("LastMod")
-                .frame(width: 120, alignment: .leading) // Use .leading
+                .frame(width: 170, alignment: .leading) // Use .leading
             
             Text("Seq#")
                 .frame(width: 50, alignment: .leading) // Use .leading
@@ -824,7 +839,7 @@ struct OccurrenceListItem: View {
                     
                     // 4) last_mod_date
                     Text(occurrence.lastModDate ?? "")
-                        .frame(width: 120, alignment: .leading)
+                        .frame(width: 170, alignment: .leading)
                     
                     // 5) SequenceNumber
                     Text(occurrence.sequenceNumber ?? "")
@@ -1211,6 +1226,78 @@ struct ProductListItem: View {
             .cornerRadius(4)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct ProductDetailView: View {
+    let product: ProductData
+    let model: BOMModel
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                // Product Details Section
+                Group {
+                    Text("Product Details")
+                        .font(.headline)
+                        .padding(.bottom, 5)
+                    
+                    Text("ID: \(product.id)")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Product ID: \(product.productId ?? "-")")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Name: \(product.name ?? "-")")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("SubType: \(product.subType ?? "-")")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                
+                // Associated Product Revisions Section
+                let revisions = model.productRevisionsDict.values.filter { $0.masterRef == product.id }
+                if !revisions.isEmpty {
+                    Divider()
+                        .padding(.vertical, 8)
+                    
+                    Text("Associated Revisions")
+                        .font(.headline)
+                        .padding(.bottom, 5)
+                    
+                    ForEach(revisions) { revision in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Revision: \(revision.revision ?? "-")")
+                                .font(.subheadline)
+                                .bold()
+                            Text("Name: \(revision.name ?? "-")")
+                            Text("SubType: \(revision.subType ?? "-")")
+                            Text("Last Modified: \(revision.lastModDate ?? "-")")
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                
+                // Associated DataSets Section
+                let dataSetRefs = revisions.flatMap { $0.dataSetRefs }
+                if !dataSetRefs.isEmpty {
+                    Divider()
+                        .padding(.vertical, 8)
+                    
+                    Text("Associated DataSets")
+                        .font(.headline)
+                        .padding(.bottom, 5)
+                    
+                    ForEach(dataSetRefs, id: \.self) { dsId in
+                        if let ds = model.dataSetsDict[dsId] {
+                            DataSetRow(dataSet: ds, model: model)
+                        } else {
+                            Text("- Unknown DataSet id=\(dsId)")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
