@@ -612,10 +612,10 @@ class BOMModel: ObservableObject {
     var logFileURL: URL? {
         return Logger.shared.logFileURL
     }
-    func findMatchingSiteId(settingsModel: SettingsModel) -> (siteId: String, tcURL: String)? {
+    func findMatchingSiteId(settingsModel: ApplicationSettingsModel) -> (siteId: String, tcURL: String)? {
         for site in sitesDict.values {
-            if let matchingSetting = settingsModel.siteSettings.first(where: { $0.siteId == site.siteId }) {
-                return (siteId: site.siteId ?? "Unknown", tcURL: matchingSetting.tcURL)
+            if let matchingSetting = settingsModel.appSettings.first(where: { $0.tcSiteId == site.siteId }) {
+                return (siteId: site.siteId ?? "Unknown", tcURL: matchingSetting.tcAwcUrl)
             }
         }
         return nil
@@ -659,7 +659,7 @@ class BOMModel: ObservableObject {
 ///  - each ProductView's header shows RevisionRule name(s) if ruleRefs exist
 struct BOMView: View {
     @ObservedObject var model: BOMModel
-    @ObservedObject var settingsModel: SettingsModel
+    @ObservedObject var settingsModel: ApplicationSettingsModel
     @State private var productViews: [ProductView] = []
     @State private var isLoading = true
     /// We'll store the parser's revisionRulesDict
@@ -944,7 +944,7 @@ struct OccurrenceListItem: View {
 struct OccurrenceDetailView: View {
     let occurrence: ProductView.Occurrence
     let model: BOMModel
-    @ObservedObject var settingsModel: SettingsModel
+    @ObservedObject var settingsModel: ApplicationSettingsModel
     // State variables to control section expansion
     @State private var isDetailsExpanded = true
     @State private var isRevisionAttributesExpanded = false

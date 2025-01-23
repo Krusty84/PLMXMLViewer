@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct PLMXMLViewerApp: App {
     @StateObject private var model = BOMModel()
-    @StateObject private var settingsModel = SettingsModel.shared
+    @StateObject private var settingsModel = ApplicationSettingsModel.shared
     
     var body: some Scene {
         // Main Window
@@ -39,7 +39,7 @@ struct PLMXMLViewerApp: App {
         
         // Settings Window
         Settings {
-            SettingsView(model: settingsModel)
+            ApplicationSettingsView(model: settingsModel)
         }
     }
     

@@ -9,62 +9,61 @@
 import Foundation
 import SwiftUI
 
-struct SiteSettings: Identifiable, Codable {
+struct ApplicationSettings: Identifiable, Codable {
     let id = UUID() // Unique ID for each row
-    var siteId: String
-    var tcURL: String
+    var tcSiteId: String
+    var tcAwcUrl: String
 }
 
-class SettingsModel: ObservableObject {
-    static let shared = SettingsModel() // Singleton instance
-    @Published var siteSettings: [SiteSettings] = []
-    private let settingsKey = "SiteSettings"
+class ApplicationSettingsModel: ObservableObject {
+    static let shared = ApplicationSettingsModel() // Singleton instance
+    @Published var appSettings: [ApplicationSettings] = []
+    private let appSettingsKey = "AppSettings"
     
     private init() { // Private to enforce singleton
         loadSettings()
     }
     
     func loadSettings() {
-        if let data = UserDefaults.standard.data(forKey: settingsKey),
-           let decoded = try? JSONDecoder().decode([SiteSettings].self, from: data) {
-            siteSettings = decoded
+        if let data = UserDefaults.standard.data(forKey: appSettingsKey),
+           let decoded = try? JSONDecoder().decode([ApplicationSettings].self, from: data) {
+            appSettings = decoded
         }
     }
     
     func saveSettings() {
-        if let encoded = try? JSONEncoder().encode(siteSettings) {
-            UserDefaults.standard.set(encoded, forKey: settingsKey)
+        if let encoded = try? JSONEncoder().encode(appSettings) {
+            UserDefaults.standard.set(encoded, forKey: appSettingsKey)
         }
     }
 
     func hasMatchingSiteId(_ siteId: String?) -> Bool {
-        print("SiteID inputed: ", siteId)
         guard let siteId = siteId else { return false }
-        return siteSettings.contains { $0.siteId == siteId }
+        return appSettings.contains { $0.tcSiteId == siteId }
     }
 }
 
 
-struct SettingsView: View {
-    @ObservedObject var model: SettingsModel
+struct ApplicationSettingsView: View {
+    @ObservedObject var model: ApplicationSettingsModel
     @Environment(\.dismiss) private var dismiss // Use dismiss to close the window
 
     var body: some View {
         Form {
             // Section for managing site settings
-            Section(header: Text("Site Settings")) {
+            Section(header: Text("Mapping: Teamcenter Site ID <-> Teamcenter AWC root URL")) {
                 List {
-                    ForEach($model.siteSettings) { $setting in
+                    ForEach($model.appSettings) { $setting in
                         HStack {
-                            TextField("Site Id", text: $setting.siteId)
+                            TextField("Site Id", text: $setting.tcSiteId)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .frame(width: 150)
-                            TextField("Tc URL", text: $setting.tcURL)
+                            TextField("TC AWC URL", text: $setting.tcAwcUrl)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .frame(width: 300)
 
                             Button(action: {
-                                deleteRow(with: setting.id)
+                                deleteSettingsPairsRow(with: setting.id)
                             }) {
                                 Image(systemName: "minus.circle")
                                     .foregroundColor(.red)
@@ -73,16 +72,16 @@ struct SettingsView: View {
                             .help("Delete this setting")
                         }
                     }
-                    .onDelete(perform: deleteRow) // Enable swipe-to-delete
+                    .onDelete(perform: deleteSettingsPairsRow) // Enable swipe-to-delete
                 }
                 .frame(minHeight: 200)
                 .listStyle(InsetListStyle())
             }
-
+           
             // Section for action buttons
             Section {
                 HStack {
-                    Button(action: addRow) {
+                    Button(action: addSettingsPairsRow) {
                         Label("Add Setting", systemImage: "plus.circle")
                     }
                     .help("Add a new setting row")
@@ -111,19 +110,19 @@ struct SettingsView: View {
     }
 
     // Add a new row to the site settings
-    private func addRow() {
-        model.siteSettings.append(SiteSettings(siteId: "", tcURL: ""))
+    private func addSettingsPairsRow() {
+        model.appSettings.append(ApplicationSettings(tcSiteId: "", tcAwcUrl: ""))
     }
 
     // Delete a row using IndexSet (for swipe-to-delete)
-    private func deleteRow(at offsets: IndexSet) {
-        model.siteSettings.remove(atOffsets: offsets)
+    private func deleteSettingsPairsRow(at offsets: IndexSet) {
+        model.appSettings.remove(atOffsets: offsets)
     }
 
     // Delete a row using UUID (for the delete button)
-    private func deleteRow(with id: UUID) {
-        if let index = model.siteSettings.firstIndex(where: { $0.id == id }) {
-            model.siteSettings.remove(at: index)
+    private func deleteSettingsPairsRow(with id: UUID) {
+        if let index = model.appSettings.firstIndex(where: { $0.id == id }) {
+            model.appSettings.remove(at: index)
         }
     }
 }
