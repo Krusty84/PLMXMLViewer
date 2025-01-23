@@ -953,20 +953,65 @@ struct OccurrenceDetailView: View {
     
     var body: some View {
         ScrollView {
-            if let matchingSite = model.findMatchingSiteId(settingsModel: settingsModel),
-               let instancedRef = occurrence.instancedRef,
-               let productRevision = model.productRevisionsDict[instancedRef] {
+            HStack(spacing: 8) { // Small gap between buttons
+                // Icon-only button
                 Button(action: {
-                    openTCAWC(urlString: matchingSite.tcURL, uid: productRevision.revisionUid ?? "")
+                    if let matchingSite = model.findMatchingSiteId(settingsModel: settingsModel),
+                       let instancedRef = occurrence.instancedRef,
+                       let productRevision = model.productRevisionsDict[instancedRef] {
+                        openTCAWC(urlString: matchingSite.tcURL, uid: productRevision.revisionUid ?? "")
+                    }
                 }) {
-                    Text("Open in External System")
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
+                    Image(systemName: "arrow.up.right.square") // SF Symbol for external link
+                        .frame(width: 18, height: 18)
+                        .font(.system(size: 18, weight: .medium))
+                        .padding(10)
+                        //.background(.white)
+                        //.foregroundColor(.white)
+                        //.cornerRadius(8)
+                        //.shadow(color: Color.blue.opacity(0.3), radius: 5, x: 0, y: 3)
                 }
-                .padding(.top, 8)
+                .disabled(!(model.findMatchingSiteId(settingsModel: settingsModel) != nil && occurrence.instancedRef != nil && model.productRevisionsDict[occurrence.instancedRef!] != nil))
+                .opacity((model.findMatchingSiteId(settingsModel: settingsModel) != nil && occurrence.instancedRef != nil && model.productRevisionsDict[occurrence.instancedRef!] != nil) ? 1 : 0.6)
+                .help("Go to source Teamcenter") // Tooltip
+
+                // Stub button (placeholder for future functionality)
+                Button(action: {
+                    // Placeholder action
+                    print("#")
+                }) {
+                    Image(systemName: "questionmark.circle") // SF Symbol for stub button
+                        .frame(width: 18, height: 18)
+                        .font(.system(size: 18, weight: .medium))
+                        .padding(10)
+                        //.background(.white)
+                        //.foregroundColor(.white)
+                        //.cornerRadius(8)
+                }
+                .disabled(true)
+                .help("This button is a placeholder for future functionality") // Tooltip
+                
+                // Stub button (placeholder for future functionality)
+                Button(action: {
+                    // Placeholder action
+                    print("#")
+                }) {
+                    Image(systemName: "questionmark.circle") // SF Symbol for stub button
+                        .frame(width: 18, height: 18)
+                        .font(.system(size: 18, weight: .medium))
+                        .padding(10)
+                        //.background(.white)
+                        //.foregroundColor(.white)
+                        //.cornerRadius(8)
+                }
+                .disabled(true)
+                .help("This button is a placeholder for future functionality") // Tooltip
             }
+            .frame(maxWidth: .infinity, alignment: .leading) // Align buttons to the left
+            .padding(.top, 8) // Add padding at the top
+            .padding(.leading, 16) // Add left padding to align with other content
+                
+            //
             VStack(alignment: .leading, spacing: 8) {
                 // Details Section (expanded by default)
                 DisclosureGroup(isExpanded: $isDetailsExpanded) {
