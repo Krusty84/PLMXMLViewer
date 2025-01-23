@@ -894,7 +894,7 @@ struct OccurrenceListItem: View {
                     // 6) ProductId
                     Text(occurrence.productId ?? "")
                         .frame(width: 150, alignment: .leading)
-                        .foregroundColor(.purple)
+                        //.foregroundColor(.purple)
                     
                     // 1) DisplayName
                     Text(occurrence.displayName ?? occurrence.id)
@@ -915,14 +915,15 @@ struct OccurrenceListItem: View {
                     // 5) SequenceNumber
                     Text(occurrence.sequenceNumber ?? "")
                         .frame(width: 50, alignment: .leading)
-                        .foregroundColor(.blue)
+                        //.foregroundColor(.blue)
                                         
                     // 7) Quantity
                     Text(occurrence.quantity ?? "")
                         .frame(width: 60, alignment: .leading)
-                        .foregroundColor(.orange)
+                        //.foregroundColor(.orange)
                 }
                 .foregroundColor(.primary)
+                .background(selectedOccurrence == occurrence ? Color.blue.opacity(0.1) : Color.clear)
                 .contentShape(Rectangle()) // Make the entire row tappable
             }
             .buttonStyle(PlainButtonStyle())
@@ -1288,7 +1289,7 @@ struct ProductListItem: View {
             }
             .foregroundColor(.primary)
             .contentShape(Rectangle()) // Make the entire row tappable
-            //.background(selectedProductId == product.id ? Color.blue.opacity(0.1) : Color.clear)
+            .background(selectedProductId == product.id ? Color.blue.opacity(0.1) : Color.clear)
             .cornerRadius(4)
         }
         .buttonStyle(PlainButtonStyle())
@@ -1418,7 +1419,7 @@ struct DataSetListItem: View {
             }
             .foregroundColor(.primary)
             .contentShape(Rectangle()) // Make the entire row tappable
-            //.background(selectedDataSetId == dataSet.id ? Color.blue.opacity(0.1) : Color.clear)
+            .background(selectedDataSetId == dataSet.id ? Color.blue.opacity(0.1) : Color.clear)
             .cornerRadius(4)
         }
         .buttonStyle(PlainButtonStyle())
@@ -1518,7 +1519,7 @@ struct FormListItem: View {
             }
             .foregroundColor(.primary)
             .contentShape(Rectangle()) // Make the entire row tappable
-            //.background(selectedFormId == form.id ? Color.blue.opacity(0.1) : Color.clear)
+            .background(selectedFormId == form.id ? Color.blue.opacity(0.1) : Color.clear)
             .cornerRadius(4)
         }
         .buttonStyle(PlainButtonStyle())

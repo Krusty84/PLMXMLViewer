@@ -90,3 +90,9 @@ public func sanitizedPath (_ path:String) -> String {
     return path.replacingOccurrences(of: "\\", with: "/")
 }
 
+extension ProductView.Occurrence: Equatable {
+    static func == (lhs: ProductView.Occurrence, rhs: ProductView.Occurrence) -> Bool {
+        // Compare the properties that make two occurrences equal
+        return lhs.id == rhs.id // Assuming `id` is a unique identifier for the occurrence
+    }
+}
