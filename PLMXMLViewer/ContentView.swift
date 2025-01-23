@@ -24,24 +24,15 @@ struct ProductView: Identifiable {
         var associatedAttachmentRefs: [String] = []
         var occurrenceRefIDs: [String] = []
         var subOccurrences: [Occurrence] = []
-        
-        // Display / metadata from ProductRevision
         var displayName:  String?
         var name:         String?
         var subType:      String?
         var revision:     String?
         var lastModDate:  String?
-        
-        // From <UserData type="AttributesInContext"> <UserValue title="SequenceNumber" ...>
         var sequenceNumber: String?
         var quantity: String?
-        
-        // NEW: The productId from <Product productId="...">
         var productId: String?
-        
-        // Dynamic attributes from <UserData>
         var userAttributes: [String: String] = [:]
-        // Optionally store references to DataSets
         var dataSetRefs: [String] = []
     }
 }
@@ -70,18 +61,17 @@ struct ProductRevisionData: Identifiable {
     var lastModDate:  String?
     var masterRef: String?
     var dataSetRefs: [String] = []
-    // Dynamic attributes from <UserData>
     var userAttributes: [String: String] = [:]
+    var revisionUid: String?
 }
 
 /// Holds data from <Product> elements (where productId is stored).
 struct ProductData: Identifiable {
     let id: String
-    
-    /// <Product id="id26" productId="8882" ...>
     var productId: String?
     var name: String?
     var subType: String?
+    var uid: String?
 }
 
 // MARK: - DataSet / ExternalFile
@@ -91,16 +81,14 @@ struct DataSetData: Identifiable {
     var name: String?
     var type: String?
     var version: String?
-    
-    /// For example, `memberRefs="#id466 #id500"`
     var memberRefs: [String] = []
+    var uid: String?
 }
 
 struct ExternalFileData: Identifiable {
     let id: String
     var locationRef: String?
     var format: String?
-    /// Optional: An absolute file path to open
     var fullPath: String?
 }
 
@@ -231,13 +219,13 @@ class BOMParser: NSObject, XMLParserDelegate {
         logger.log("Started parsing element: \(elementName)")
         switch elementName {
             case "Site":
-                  let id = attributeDict["id"]
-                  var site = SiteData(id: id ?? "")
-                  site.name = attributeDict["name"]
-                  site.siteId = attributeDict["siteId"]
-                  sitesDict[id ?? ""] = site
-                  currentSite = site
-                  logger.log("Parsed Site: id=\(id), name=\(site.name ?? "nil"), siteId=\(site.siteId ?? "nil").")
+                let id = attributeDict["id"]
+                var site = SiteData(id: id ?? "")
+                site.name = attributeDict["name"]
+                site.siteId = attributeDict["siteId"]
+                sitesDict[id ?? ""] = site
+                currentSite = site
+                logger.log("Parsed Site: id=\(id), name=\(site.name ?? "nil"), siteId=\(site.siteId ?? "nil").")
                 
             case "PLMXML":
                 let schemaVersion   = attributeDict["schemaVersion"] ?? ""
@@ -281,27 +269,27 @@ class BOMParser: NSObject, XMLParserDelegate {
                 // 4) Occurrence
             case "Occurrence":
                 let id = attributeDict["id"] ?? ""
-                    var occ = ProductView.Occurrence(id: id)
-
-                    if let instancedRef = attributeDict["instancedRef"] {
-                        occ.instancedRef = instancedRef.hasPrefix("#") ? String(instancedRef.dropFirst()) : instancedRef
-                    }
-
-                    if let refsString = attributeDict["associatedAttachmentRefs"] {
-                        let attachmentRefs = refsString.components(separatedBy: " ")
-                            .map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
-                        occ.associatedAttachmentRefs = attachmentRefs
-                    }
-
-                    if let refsString = attributeDict["occurrenceRefs"] {
-                        let childIDs = refsString.components(separatedBy: " ")
-                            .map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
-                        occ.occurrenceRefIDs = childIDs
-                    }
-
-                    occurrencesDict[id] = occ
-                    currentOccurrence = occ
-                    logger.log("Parsed Occurrence: id=\(id), instancedRef=\(occ.instancedRef ?? "nil"), associatedAttachmentRefs=\(occ.associatedAttachmentRefs), occurrenceRefIDs=\(occ.occurrenceRefIDs).")
+                var occ = ProductView.Occurrence(id: id)
+                
+                if let instancedRef = attributeDict["instancedRef"] {
+                    occ.instancedRef = instancedRef.hasPrefix("#") ? String(instancedRef.dropFirst()) : instancedRef
+                }
+                
+                if let refsString = attributeDict["associatedAttachmentRefs"] {
+                    let attachmentRefs = refsString.components(separatedBy: " ")
+                        .map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+                    occ.associatedAttachmentRefs = attachmentRefs
+                }
+                
+                if let refsString = attributeDict["occurrenceRefs"] {
+                    let childIDs = refsString.components(separatedBy: " ")
+                        .map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+                    occ.occurrenceRefIDs = childIDs
+                }
+                
+                occurrencesDict[id] = occ
+                currentOccurrence = occ
+                logger.log("Parsed Occurrence: id=\(id), instancedRef=\(occ.instancedRef ?? "nil"), associatedAttachmentRefs=\(occ.associatedAttachmentRefs), occurrenceRefIDs=\(occ.occurrenceRefIDs).")
                 
                 // 5) ProductRevision
             case "ProductRevision":
@@ -337,6 +325,15 @@ class BOMParser: NSObject, XMLParserDelegate {
                 //
                 logger.log("Parsed Product: id=\(id), productId=\(pd.productId ?? "nil"), name=\(pd.name ?? "nil").")
                 
+            case "ApplicationRef":
+                if let version = attributeDict["version"] {
+                    currentProductRevision?.revisionUid = version
+                    logger.log("Parsed ApplicationRef with version (uid) for ProductRevision: \(version)")
+                }
+                if let label = attributeDict["label"] {
+                    currentProduct?.uid = label
+                    logger.log("Parsed ApplicationRef with label (uid) for Product: \(label)")
+                }
                 // 7) RevisionRule
             case "RevisionRule":
                 // e.g. <RevisionRule id="id2" name="Latest Working">
@@ -351,12 +348,12 @@ class BOMParser: NSObject, XMLParserDelegate {
             case "UserData":
                 // If type="AttributesInContext", we watch for SequenceNumber
                 if let typeAttr = attributeDict["type"], typeAttr == "AttributesInContext" {
-                        insideAttributesInContext = true
-                        logger.log("Entered UserData block with type=AttributesInContext.")
-                    } else if let typeAttr = attributeDict["type"], typeAttr == "FormAttributes" {
-                        // Handle FormAttributes specifically
-                        logger.log("Entered UserData block with type=FormAttributes.")
-                    }
+                    insideAttributesInContext = true
+                    logger.log("Entered UserData block with type=AttributesInContext.")
+                } else if let typeAttr = attributeDict["type"], typeAttr == "FormAttributes" {
+                    // Handle FormAttributes specifically
+                    logger.log("Entered UserData block with type=FormAttributes.")
+                }
                 
             case "AssociatedAttachment":
                 let id = attributeDict["id"] ?? ""
@@ -428,12 +425,12 @@ class BOMParser: NSObject, XMLParserDelegate {
                 }
                 //
                 if let form = currentForm, let title = attributeDict["title"], let val = attributeDict["value"] {
-                        var updatedForm = form
-                        updatedForm.userAttributes[title] = val
-                        formsDict[form.id] = updatedForm
-                        currentForm = updatedForm
-                        logger.log("Updated Form with attribute: \(title) = \(val).")
-                    }
+                    var updatedForm = form
+                    updatedForm.userAttributes[title] = val
+                    formsDict[form.id] = updatedForm
+                    currentForm = updatedForm
+                    logger.log("Updated Form with attribute: \(title) = \(val).")
+                }
                 
             case "DataSet":
                 let id = attributeDict["id"] ?? ""
@@ -600,6 +597,7 @@ class BOMModel: ObservableObject {
     @Published var revisionRules: [String: RevisionRuleData] = [:]
     @Published var plmxmlInfo: [String: PLMXMLGeneralData] = [:]
     @Published var plmxmlTransferContextInfo: [String: PLMXMLTransferContextlData] = [:]
+    @Published var currentSiteId: String? = nil
     @Published var sitesDict: [String: SiteData] = [:]
     /// The name of the last opened file, e.g. "MyAssembly.xml"
     @Published var lastOpenedFileName: String = "(No file opened)"
@@ -612,11 +610,19 @@ class BOMModel: ObservableObject {
     //
     private let logger = Logger.shared
     var logFileURL: URL? {
-            return Logger.shared.logFileURL
+        return Logger.shared.logFileURL
+    }
+    func findMatchingSiteId(settingsModel: SettingsModel) -> (siteId: String, tcURL: String)? {
+        for site in sitesDict.values {
+            if let matchingSetting = settingsModel.siteSettings.first(where: { $0.siteId == site.siteId }) {
+                return (siteId: site.siteId ?? "Unknown", tcURL: matchingSetting.tcURL)
+            }
         }
+        return nil
+    }
     func getProductRevision(byID id: String) -> ProductRevisionData? {
-            return productRevisionsDict[id]
-        }
+        return productRevisionsDict[id]
+    }
     /// Helper method for loading from data, using BOMParser.
     //    func loadPLMXML(from data: Data) {
     //        let parser = BOMParser()
@@ -653,6 +659,7 @@ class BOMModel: ObservableObject {
 ///  - each ProductView's header shows RevisionRule name(s) if ruleRefs exist
 struct BOMView: View {
     @ObservedObject var model: BOMModel
+    @ObservedObject var settingsModel: SettingsModel
     @State private var productViews: [ProductView] = []
     @State private var isLoading = true
     /// We'll store the parser's revisionRulesDict
@@ -681,42 +688,42 @@ struct BOMView: View {
                             let ruleNames = (pv.ruleRefs ?? []).compactMap { model.revisionRules[$0]?.name }
                             let appliedRevRule = ruleNames.isEmpty ? "No Revision Rule" : ruleNames.joined(separator: ", ")
                             DisclosureGroup(isExpanded: $isGeneralExpanded) {
-                                    ForEach(Array(model.plmxmlInfo.keys), id: \.self) { key in
-                                        if let plmxmlData = model.plmxmlInfo[key]{
-                                            (Text("Exported from: ").bold() + Text("\(plmxmlData.author) ").font(.body))
-                                            ForEach(Array(model.plmxmlTransferContextInfo.keys), id: \.self) { contextKey in
-                                                if let plmxmlContextData = model.plmxmlTransferContextInfo[contextKey] {
-                                                    Text("PLMXML Rules: ").bold() + Text("\(plmxmlContextData.transferContext)").font(.body)
-                                                }
+                                ForEach(Array(model.plmxmlInfo.keys), id: \.self) { key in
+                                    if let plmxmlData = model.plmxmlInfo[key]{
+                                        (Text("Exported from: ").bold() + Text("\(plmxmlData.author) ").font(.body))
+                                        ForEach(Array(model.plmxmlTransferContextInfo.keys), id: \.self) { contextKey in
+                                            if let plmxmlContextData = model.plmxmlTransferContextInfo[contextKey] {
+                                                Text("PLMXML Rules: ").bold() + Text("\(plmxmlContextData.transferContext)").font(.body)
                                             }
-                                            (Text("Date: ").bold() + Text("\(plmxmlData.date) ").font(.body)) +
-                                            (Text("Time: ").bold() + Text("\(plmxmlData.time)").font(.body))
-                                            (Text("Configured by: ").bold() + Text("\(appliedRevRule) ").font(.body))
-                                            ForEach(model.sitesDict.values.sorted(by: { $0.id < $1.id })) { site in
-                                                HStack(spacing: 10) { // Adjust the spacing value as needed
-                                                    (Text("Site Id: ").bold() + Text("\(site.siteId ?? "Unknown")").font(.body))
-                                                    (Text("Site Name: ").bold() + Text("\(site.name ?? "Unknown")").font(.body))
+                                        }
+                                        (Text("Date: ").bold() + Text("\(plmxmlData.date) ").font(.body)) +
+                                        (Text("Time: ").bold() + Text("\(plmxmlData.time)").font(.body))
+                                        (Text("Configured by: ").bold() + Text("\(appliedRevRule) ").font(.body))
+                                        ForEach(model.sitesDict.values.sorted(by: { $0.id < $1.id })) { site in
+                                            HStack(spacing: 10) { // Adjust the spacing value as needed
+                                                (Text("Site Id: ").bold() + Text("\(site.siteId ?? "Unknown")").font(.body))
+                                                (Text("Site Name: ").bold() + Text("\(site.name ?? "Unknown")").font(.body))
                                                 
-                                                }
                                             }
                                         }
                                     }
+                                }
                                 
-                                   } label: {
-                                       Text("PLMXML Overview")
-                                           .font(.headline)
-                                       //.padding()
-                                           .frame(maxWidth: .infinity, alignment: .leading)
-                                       //.background(Color.orange.opacity(100))
-                                           .background(Color(nsColor: .windowBackgroundColor))
-                                       //.cornerRadius(8)
-                                           .onTapGesture {
-                                               withAnimation {
-                                                   isGeneralExpanded.toggle()
-                                               }
-                                           }
-                                   }
-                                   .padding(.bottom, 2)
+                            } label: {
+                                Text("PLMXML Overview")
+                                    .font(.headline)
+                                //.padding()
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                //.background(Color.orange.opacity(100))
+                                    .background(Color(nsColor: .windowBackgroundColor))
+                                //.cornerRadius(8)
+                                    .onTapGesture {
+                                        withAnimation {
+                                            isGeneralExpanded.toggle()
+                                        }
+                                    }
+                            }
+                            .padding(.bottom, 2)
                             Section {
                                 // Tab Picker
                                 Picker("", selection: $selectedTab) {
@@ -727,36 +734,36 @@ struct BOMView: View {
                                 }
                                 .pickerStyle(SegmentedPickerStyle())
                                 .padding(.horizontal)
-
+                                
                                 // Display occurrences based on the selected tab
                                 switch selectedTab {
-                                case 0:
-                                    // Column Header
-                                    ColumnHeaderOccurrenceView()
-                                    // Tab 1: Show all occurrences
-                                    ForEach(pv.occurrences) { occ in
-                                        OccurrenceListItem(
-                                            occurrence: occ,
-                                            selectedOccurrence: $selectedOccurrence
-                                        )
-                                    }
-                                case 1:
+                                    case 0:
+                                        // Column Header
+                                        ColumnHeaderOccurrenceView()
+                                        // Tab 1: Show all occurrences
+                                        ForEach(pv.occurrences) { occ in
+                                            OccurrenceListItem(
+                                                occurrence: occ,
+                                                selectedOccurrence: $selectedOccurrence
+                                            )
+                                        }
+                                    case 1:
                                         ColumnHeaderProductView()
                                         ForEach(model.productDict.values.sorted(by: { $0.id < $1.id })) { product in
-                                                    ProductListItem(product: product, selectedProductId: $selectedProductId)
-                                                }
-                                case 2:
+                                            ProductListItem(product: product, selectedProductId: $selectedProductId)
+                                        }
+                                    case 2:
                                         ColumnHeaderDataSetView()
                                         ForEach(model.dataSetsDict.values.sorted(by: { $0.id < $1.id })) { dataSet in
-                                                DataSetListItem(dataSet: dataSet, selectedDataSetId: $selectedDataSetId)
-                                            }
-                                case 3:
+                                            DataSetListItem(dataSet: dataSet, selectedDataSetId: $selectedDataSetId)
+                                        }
+                                    case 3:
                                         ColumnHeaderFormView()
-                                            ForEach(model.formsDict.values.sorted(by: { $0.id < $1.id })) { form in
-                                                FormListItem(form: form, selectedFormId: $selectedFormId)
-                                            }
-                                default:
-                                    EmptyView()
+                                        ForEach(model.formsDict.values.sorted(by: { $0.id < $1.id })) { form in
+                                            FormListItem(form: form, selectedFormId: $selectedFormId)
+                                        }
+                                    default:
+                                        EmptyView()
                                 }
                             }
                         }
@@ -773,7 +780,7 @@ struct BOMView: View {
                     switch selectedTab{
                         case 0:
                             if let occ = selectedOccurrence {
-                                OccurrenceDetailView(occurrence: occ, model: model)
+                                OccurrenceDetailView(occurrence: occ, model: model,settingsModel: settingsModel)
                                     .frame(width: geometry.size.width, height: geometry.size.height)
                             } else {
                                 Text("No Occurrence Selected")
@@ -781,13 +788,13 @@ struct BOMView: View {
                             }
                         case 1:
                             if let selectedProductId = selectedProductId,
-                                       let product = model.productDict[selectedProductId] {
-                                        ProductDetailView(product: product, model: model)
-                                            .frame(minWidth: 400)
-                                    } else {
-                                        Text("No Product Selected")
-                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    }
+                               let product = model.productDict[selectedProductId] {
+                                ProductDetailView(product: product, model: model)
+                                    .frame(minWidth: 400)
+                            } else {
+                                Text("No Product Selected")
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
                         case 2:
                             if let selectedDataSetId = selectedDataSetId,
                                let dataSet = model.dataSetsDict[selectedDataSetId] {
@@ -799,17 +806,17 @@ struct BOMView: View {
                             }
                         case 3:
                             if let selectedFormId = selectedFormId,
-                                                  let form = model.formsDict[selectedFormId] {
-                                            FormDetailView(form: form, model: model)
-                                                .frame(minWidth: 400)
-                                        } else {
-                                            Text("No Form Selected")
-                                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                        }
+                               let form = model.formsDict[selectedFormId] {
+                                FormDetailView(form: form, model: model)
+                                    .frame(minWidth: 400)
+                            } else {
+                                Text("No Form Selected")
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
                         default:
                             EmptyView()
                     }
-                
+                    
                 }
             }
             .frame(minWidth: 300)
@@ -860,7 +867,7 @@ struct ColumnHeaderOccurrenceView: View {
             
             Text("Seq#")
                 .frame(width: 50, alignment: .leading) // Use .leading
-        
+            
             Text("Quantity")
                 .frame(width: 60, alignment: .leading) // Use .leading
         }
@@ -894,7 +901,7 @@ struct OccurrenceListItem: View {
                     // 6) ProductId
                     Text(occurrence.productId ?? "")
                         .frame(width: 150, alignment: .leading)
-                        //.foregroundColor(.purple)
+                    //.foregroundColor(.purple)
                     
                     // 1) DisplayName
                     Text(occurrence.displayName ?? occurrence.id)
@@ -915,12 +922,12 @@ struct OccurrenceListItem: View {
                     // 5) SequenceNumber
                     Text(occurrence.sequenceNumber ?? "")
                         .frame(width: 50, alignment: .leading)
-                        //.foregroundColor(.blue)
-                                        
+                    //.foregroundColor(.blue)
+                    
                     // 7) Quantity
                     Text(occurrence.quantity ?? "")
                         .frame(width: 60, alignment: .leading)
-                        //.foregroundColor(.orange)
+                    //.foregroundColor(.orange)
                 }
                 .foregroundColor(.primary)
                 .background(selectedOccurrence == occurrence ? Color.blue.opacity(0.1) : Color.clear)
@@ -937,7 +944,7 @@ struct OccurrenceListItem: View {
 struct OccurrenceDetailView: View {
     let occurrence: ProductView.Occurrence
     let model: BOMModel
-    
+    @ObservedObject var settingsModel: SettingsModel
     // State variables to control section expansion
     @State private var isDetailsExpanded = true
     @State private var isRevisionAttributesExpanded = false
@@ -946,20 +953,34 @@ struct OccurrenceDetailView: View {
     
     var body: some View {
         ScrollView {
+            if let matchingSite = model.findMatchingSiteId(settingsModel: settingsModel),
+               let instancedRef = occurrence.instancedRef,
+               let productRevision = model.productRevisionsDict[instancedRef] {
+                Button(action: {
+                    openTCAWC(urlString: matchingSite.tcURL, uid: productRevision.revisionUid ?? "")
+                }) {
+                    Text("Open in External System")
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+                .padding(.top, 8)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 // Details Section (expanded by default)
                 DisclosureGroup(isExpanded: $isDetailsExpanded) {
                     Group {
-//                        Text("ID: \(occurrence.id)")
-//                            .frame(maxWidth: .infinity, alignment: .leading)
+                        //                        Text("ID: \(occurrence.id)")
+                        //                            .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Item Id: \(occurrence.productId ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Revision: \(occurrence.revision ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Name: \(occurrence.name ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
-//                        Text("DisplayName: \(occurrence.displayName ?? "-")")
-//                            .frame(maxWidth: .infinity, alignment: .leading)
+                        //                        Text("DisplayName: \(occurrence.displayName ?? "-")")
+                        //                            .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Type: \(occurrence.subType ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("LastModDate: \(occurrence.lastModDate ?? "-")")
@@ -987,7 +1008,6 @@ struct OccurrenceDetailView: View {
                         }
                 }
                 .padding(.bottom, 8)
-                
                 // Revision Attributes Section
                 if let instancedRef = occurrence.instancedRef,
                    let productRevision = model.productRevisionsDict[instancedRef] {
@@ -1159,7 +1179,7 @@ struct FileRow: View {
         let url = URL(fileURLWithPath: path)
         NSWorkspace.shared.open(url)  // opens with default application
     }
-        
+    
     private func revealInFinder(_ path: String) {
         // Replace backslashes with forward slashes
         let sanitizedPath = path.replacingOccurrences(of: "\\", with: "/")
@@ -1309,8 +1329,8 @@ struct ProductDetailView: View {
                         .font(.headline)
                         .padding(.bottom, 5)
                     
-//                    Text("ID: \(product.id)")
-//                        .frame(maxWidth: .infinity, alignment: .leading)
+                    //                    Text("ID: \(product.id)")
+                    //                        .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Item Id: \(product.productId ?? "-")")
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Name: \(product.name ?? "-")")
@@ -1439,8 +1459,8 @@ struct DataSetDetailView: View {
                         .font(.headline)
                         .padding(.bottom, 5)
                     
-//                    Text("ID: \(dataSet.id)")
-//                        .frame(maxWidth: .infinity, alignment: .leading)
+                    //                    Text("ID: \(dataSet.id)")
+                    //                        .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Name: \(dataSet.name ?? "-")")
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Type: \(dataSet.type ?? "-")")
@@ -1487,8 +1507,8 @@ struct DataSetDetailView: View {
 struct ColumnHeaderFormView: View {
     var body: some View {
         HStack(spacing: 8) {
-//            Text("Form ID")
-//                .frame(width: 150, alignment: .leading)
+            //            Text("Form ID")
+            //                .frame(width: 150, alignment: .leading)
             Text("Name")
                 .frame(width: 150, alignment: .leading)
             Text("Type")
@@ -1501,15 +1521,15 @@ struct ColumnHeaderFormView: View {
 struct FormListItem: View {
     let form: FormData
     @Binding var selectedFormId: String?
-  
+    
     var body: some View {
         Button(action: {
             selectedFormId = form.id
         }) {
             HStack(spacing: 8) {
                 // 1) Form ID
-//                Text(form.id)
-//                    .frame(width: 150, alignment: .leading)
+                //                Text(form.id)
+                //                    .frame(width: 150, alignment: .leading)
                 // 2) Form Name
                 Text(form.name ?? "Unnamed Form")
                     .frame(width: 150, alignment: .leading)
@@ -1539,8 +1559,8 @@ struct FormDetailView: View {
                         .font(.headline)
                         .padding(.bottom, 5)
                     
-//                    Text("ID: \(form.id)")
-//                        .frame(maxWidth: .infinity, alignment: .leading)
+                    //                    Text("ID: \(form.id)")
+                    //                        .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Name: \(form.name ?? "-")")
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Type: \(form.subType ?? "-")")

@@ -16,7 +16,7 @@ struct PLMXMLViewerApp: App {
     
     var body: some Scene {
         WindowGroup {
-            BOMView(model: model)
+            BOMView(model: model,settingsModel: settingsModel)
                 .onChange(of: model.lastOpenedFileName) { newFileName in
                     if let keyWindow = NSApp.keyWindow {
                         keyWindow.title = "PLMXMLViewer: \(newFileName)"

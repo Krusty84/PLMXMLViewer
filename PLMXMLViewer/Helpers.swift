@@ -6,6 +6,10 @@
 //
 
 import Foundation
+import AppKit
+
+//teamcenter-awc const part or url for direct open by uid
+let awcPath = "/#/com.siemens.splm.clientfx.tcui.xrt.showObject?uid="
 
 class Logger {
     static let shared = Logger()
@@ -90,9 +94,25 @@ public func sanitizedPath (_ path:String) -> String {
     return path.replacingOccurrences(of: "\\", with: "/")
 }
 
+
+func openTCAWC(urlString: String, uid: String) {
+    // Construct the full URL string
+    let fullURLString = urlString + awcPath + uid
+    
+    // Convert the full URL string to a URL object
+    if let url = URL(string: fullURLString) {
+        // Open the URL in the default web browser
+        NSWorkspace.shared.open(url)
+    } else {
+        print("Invalid URL")
+    }
+}
+
 extension ProductView.Occurrence: Equatable {
     static func == (lhs: ProductView.Occurrence, rhs: ProductView.Occurrence) -> Bool {
         // Compare the properties that make two occurrences equal
         return lhs.id == rhs.id // Assuming `id` is a unique identifier for the occurrence
     }
 }
+
+

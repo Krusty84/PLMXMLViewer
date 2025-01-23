@@ -31,6 +31,12 @@ class SettingsModel: ObservableObject {
             UserDefaults.standard.set(encoded, forKey: settingsKey)
         }
     }
+
+    func hasMatchingSiteId(_ siteId: String?) -> Bool {
+        print("SiteID inputed: ", siteId!)
+            guard let siteId = siteId else { return false }
+            return siteSettings.contains { $0.siteId == siteId }
+    }
 }
 
 struct SettingsView: View {
