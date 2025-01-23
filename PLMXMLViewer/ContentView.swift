@@ -1010,7 +1010,8 @@ struct OccurrenceDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading) // Align buttons to the left
             .padding(.top, 8) // Add padding at the top
             .padding(.leading, 16) // Add left padding to align with other content
-                
+            //
+            Divider()
             //
             VStack(alignment: .leading, spacing: 8) {
                 // Details Section (expanded by default)

@@ -1,29 +1,18 @@
-//
-//  PLMXMLViewerApp.swift
-//  PLMXMLViewer
-//
-//  Created by Sedoykin Alexey on 16/01/2025.
-//
-
 import SwiftUI
 
 @main
 struct PLMXMLViewerApp: App {
     @StateObject private var model = BOMModel()
-    //@StateObject private var settingsModel = SettingsModel()
     @StateObject private var settingsModel = SettingsModel.shared
-    @State private var isShowingSettings = false
     
     var body: some Scene {
+        // Main Window
         WindowGroup {
-            BOMView(model: model,settingsModel: settingsModel)
+            BOMView(model: model, settingsModel: settingsModel)
                 .onChange(of: model.lastOpenedFileName) { newFileName in
                     if let keyWindow = NSApp.keyWindow {
                         keyWindow.title = "PLMXMLViewer: \(newFileName)"
                     }
-                }
-                .sheet(isPresented: $isShowingSettings) {
-                    SettingsView(model: settingsModel)
                 }
         }
         .commands {
@@ -42,12 +31,15 @@ struct PLMXMLViewerApp: App {
                     }
                 }
             }
-            CommandGroup(replacing: .appSettings) {
-                Button("Settings") {
-                    isShowingSettings = true
-                }
-                .keyboardShortcut(",", modifiers: [.command])
-            }
+//            CommandGroup(replacing: .appSettings) {
+//                SettingsLink() // Use SettingsLink for the "Settings" menu item
+//                    .keyboardShortcut(",", modifiers: [.command])
+//            }
+        }
+        
+        // Settings Window
+        Settings {
+            SettingsView(model: settingsModel)
         }
     }
     
@@ -72,4 +64,3 @@ struct PLMXMLViewerApp: App {
         }
     }
 }
-
