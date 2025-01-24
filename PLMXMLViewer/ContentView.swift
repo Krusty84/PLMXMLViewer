@@ -290,7 +290,19 @@ class BOMParser: NSObject, XMLParserDelegate {
                 occurrencesDict[id] = occ
                 currentOccurrence = occ
                 logger.log("Parsed Occurrence: id=\(id), instancedRef=\(occ.instancedRef ?? "nil"), associatedAttachmentRefs=\(occ.associatedAttachmentRefs), occurrenceRefIDs=\(occ.occurrenceRefIDs).")
+                // 6) Product (NEW)
+            case "Product":
+                // E.g. <Product id="id26" name="Level1" subType="Item" productId="8882">
+                let id = attributeDict["id"] ?? ""
+                var pd = ProductData(id: id)
+                pd.productId = attributeDict["productId"]
+                pd.name      = attributeDict["name"]
+                pd.subType   = attributeDict["subType"]
                 
+                productDict[id] = pd
+                currentProduct = pd
+                //
+                logger.log("Parsed Product: id=\(id), productId=\(pd.productId ?? "nil"), name=\(pd.name ?? "nil").")
                 // 5) ProductRevision
             case "ProductRevision":
                 let id = attributeDict["id"] ?? ""
@@ -311,29 +323,23 @@ class BOMParser: NSObject, XMLParserDelegate {
                 //
                 logger.log("Parsed ProductRevision: id=\(id), name=\(rev.name ?? "nil"), masterRef=\(rev.masterRef ?? "nil").")
                 
-                // 6) Product (NEW)
-            case "Product":
-                // E.g. <Product id="id26" name="Level1" subType="Item" productId="8882">
-                let id = attributeDict["id"] ?? ""
-                var pd = ProductData(id: id)
-                pd.productId = attributeDict["productId"]
-                pd.name      = attributeDict["name"]
-                pd.subType   = attributeDict["subType"]
-                
-                productDict[id] = pd
-                currentProduct = pd
-                //
-                logger.log("Parsed Product: id=\(id), productId=\(pd.productId ?? "nil"), name=\(pd.name ?? "nil").")
-                
             case "ApplicationRef":
-                if let version = attributeDict["version"] {
-                    currentProductRevision?.revisionUid = version
-                    logger.log("Parsed ApplicationRef with version (uid) for ProductRevision: \(version)")
-                }
-                if let label = attributeDict["label"] {
-                    currentProduct?.uid = label
-                    logger.log("Parsed ApplicationRef with label (uid) for Product: \(label)")
-                }
+                            if let version = attributeDict["version"] {
+                                if var currentProductRevision = currentProductRevision {
+                                    currentProductRevision.revisionUid = version
+                                    self.currentProductRevision = currentProductRevision // Reassign the updated copy
+                                    logger.log("Parsed ApplicationRef with version (uid) for ProductRevision: \(version)")
+                                }
+                            }
+                            if let label = attributeDict["label"] {
+                                if var currentProduct = currentProduct {
+                                    currentProduct.uid = label
+                                    print("uid: ",currentProduct.uid)
+                                    self.currentProduct = currentProduct // Reassign the updated copy
+                                    self.productDict[currentProduct.id] = currentProduct
+                                    logger.log("Parsed ApplicationRef with label (uid) for Product: \(label)")
+                                }
+                            }
                 // 7) RevisionRule
             case "RevisionRule":
                 // e.g. <RevisionRule id="id2" name="Latest Working">
@@ -789,7 +795,7 @@ struct BOMView: View {
                         case 1:
                             if let selectedProductId = selectedProductId,
                                let product = model.productDict[selectedProductId] {
-                                ProductDetailView(product: product, model: model)
+                                ProductDetailView(product: product, model: model,settingsModel: settingsModel)
                                     .frame(minWidth: 400)
                             } else {
                                 Text("No Product Selected")
@@ -1365,10 +1371,27 @@ struct ProductListItem: View {
 struct ProductDetailView: View {
     let product: ProductData
     let model: BOMModel
+    @ObservedObject var settingsModel: ApplicationSettingsModel
     
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    if let matchingSiteId = model.findMatchingSiteId(settingsModel: settingsModel) {
+                                    Button(action: {
+                                        // Action for the button
+                                        print("dddd: ",product)
+                                        openTCAWC(urlString: matchingSiteId.tcURL, uid: product.uid ?? "")
+                                    }) {
+                                        Text("Go to source Teamcenter")
+                                            .padding()
+                                            .background(Color.blue)
+                                            .foregroundColor(.white)
+                                            .cornerRadius(8)
+                                    }
+                                    .padding(.top, 8)
+                                }
+                }
                 // Product Details Section
                 Group {
                     Text("Product Details")
