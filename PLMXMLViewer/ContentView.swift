@@ -236,7 +236,7 @@ class BOMParser: NSObject, XMLParserDelegate {
                 plmxmlGeneralDataDict[schemaVersion] = plmxmlInfo
                 //
                 logger.log("Parsed PLMXML header: schemaVersion=\(schemaVersion), author=\(author), date=\(date), time=\(time).")
-                // 2) ConfContext Info
+               
             case "Header":
                 // e.g. <Header id="id1" traverseRootRefs="#id5" transferContext="ConfiguredDataFilesExportDefault"></Header>
                 let id   = attributeDict["id"] ?? ""
@@ -246,7 +246,7 @@ class BOMParser: NSObject, XMLParserDelegate {
                 //
                 logger.log("Parsed Header: id=\(id), transferContext=\(transferContext).")
                 
-                // 3) ProductView
+                
             case "ProductView":
                 let id = attributeDict["id"] ?? ""
                 // For ruleRefs="#id2" we remove '#'
@@ -266,7 +266,7 @@ class BOMParser: NSObject, XMLParserDelegate {
                 //
                 logger.log("Parsed ProductView: id=\(id), ruleRefs=\(ruleRefs ?? []), primaryOccurrenceRef=\(primaryOccurrenceRef ?? "nil").")
                 
-                // 4) Occurrence
+               
             case "Occurrence":
                 let id = attributeDict["id"] ?? ""
                 var occ = ProductView.Occurrence(id: id)
@@ -290,7 +290,8 @@ class BOMParser: NSObject, XMLParserDelegate {
                 occurrencesDict[id] = occ
                 currentOccurrence = occ
                 logger.log("Parsed Occurrence: id=\(id), instancedRef=\(occ.instancedRef ?? "nil"), associatedAttachmentRefs=\(occ.associatedAttachmentRefs), occurrenceRefIDs=\(occ.occurrenceRefIDs).")
-                // 6) Product (NEW)
+                
+                
             case "Product":
                 // E.g. <Product id="id26" name="Level1" subType="Item" productId="8882">
                 let id = attributeDict["id"] ?? ""
@@ -303,11 +304,11 @@ class BOMParser: NSObject, XMLParserDelegate {
                 currentProduct = pd
                 //
                 logger.log("Parsed Product: id=\(id), productId=\(pd.productId ?? "nil"), name=\(pd.name ?? "nil").")
-                // 5) ProductRevision
+                
+               
             case "ProductRevision":
                 let id = attributeDict["id"] ?? ""
                 var rev = ProductRevisionData(id: id)
-                
                 rev.name     = attributeDict["name"]
                 rev.subType  = attributeDict["subType"]
                 rev.revision = attributeDict["revision"]
@@ -318,29 +319,10 @@ class BOMParser: NSObject, XMLParserDelegate {
                     ? String(masterRef.dropFirst())
                     : masterRef
                 }
-                
                 currentProductRevision = rev
                 //
                 logger.log("Parsed ProductRevision: id=\(id), name=\(rev.name ?? "nil"), masterRef=\(rev.masterRef ?? "nil").")
-                
-            case "ApplicationRef":
-                            if let version = attributeDict["version"] {
-                                if var currentProductRevision = currentProductRevision {
-                                    currentProductRevision.revisionUid = version
-                                    self.currentProductRevision = currentProductRevision // Reassign the updated copy
-                                    logger.log("Parsed ApplicationRef with version (uid) for ProductRevision: \(version)")
-                                }
-                            }
-                            if let label = attributeDict["label"] {
-                                if var currentProduct = currentProduct {
-                                    currentProduct.uid = label
-                                    print("uid: ",currentProduct.uid)
-                                    self.currentProduct = currentProduct // Reassign the updated copy
-                                    self.productDict[currentProduct.id] = currentProduct
-                                    logger.log("Parsed ApplicationRef with label (uid) for Product: \(label)")
-                                }
-                            }
-                // 7) RevisionRule
+                            
             case "RevisionRule":
                 // e.g. <RevisionRule id="id2" name="Latest Working">
                 let id   = attributeDict["id"] ?? ""
@@ -350,7 +332,7 @@ class BOMParser: NSObject, XMLParserDelegate {
                 //
                 logger.log("Parsed RevisionRule: id=\(id), name=\(name).")
                 
-                // 8) UserData
+            
             case "UserData":
                 // If type="AttributesInContext", we watch for SequenceNumber
                 if let typeAttr = attributeDict["type"], typeAttr == "AttributesInContext" {
@@ -383,7 +365,7 @@ class BOMParser: NSObject, XMLParserDelegate {
                 currentForm = form
                 logger.log("Parsed Form: id=\(id), name=\(form.name ?? "nil"), subType=\(form.subType ?? "nil").")
                 
-                // 9) UserValue
+            
             case "UserValue":
                 if insideAttributesInContext, let occ = currentOccurrence {
                     if let title = attributeDict["title"],
@@ -478,6 +460,28 @@ class BOMParser: NSObject, XMLParserDelegate {
                     //
                     logger.log("Updated ProductRevision with DataSetRef: \(dsId).")
                 }
+                
+            case "ApplicationRef":
+                            if let version = attributeDict["version"] {
+                                if var currentProductRevision = currentProductRevision {
+                                    currentProductRevision.revisionUid = version
+                                    self.currentProductRevision = currentProductRevision // Reassign the updated copy
+                                    logger.log("Parsed ApplicationRef with version (uid) for ProductRevision: \(version)")
+                                }
+                            }
+                            if let label = attributeDict["label"] {
+                                if var currentProduct = currentProduct {
+                                    currentProduct.uid = label
+                                    self.currentProduct = currentProduct // Reassign the updated copy
+                                    self.productDict[currentProduct.id] = currentProduct
+                                    logger.log("Parsed ApplicationRef with label (uid) for Product: \(label)")
+                                } else if var currentDataSet = currentDataSet {
+                                    currentDataSet.uid = label
+                                    self.currentDataSet = currentDataSet
+                                    self.dataSetsDict[currentDataSet.id] = currentDataSet
+                                    logger.log("Parsed ApplicationRef with label (uid) for Dataset: \(label)")
+                                }
+                            }
             default:
                 break
         }
@@ -804,7 +808,7 @@ struct BOMView: View {
                         case 2:
                             if let selectedDataSetId = selectedDataSetId,
                                let dataSet = model.dataSetsDict[selectedDataSetId] {
-                                DataSetDetailView(dataSet: dataSet, model: model)
+                                DataSetDetailView(dataSet: dataSet, model: model,settingsModel: settingsModel)
                                     .frame(minWidth: 400)
                             } else {
                                 Text("No Dataset Selected")
@@ -1285,7 +1289,8 @@ struct DataSetRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("DataSet: \(dataSet.name ?? dataSet.id) [\(dataSet.type ?? "")]")
-                .font(.subheadline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
             
             if !dataSet.memberRefs.isEmpty {
                 ForEach(dataSet.memberRefs, id: \.self) { fileId in
@@ -1372,103 +1377,185 @@ struct ProductDetailView: View {
     let product: ProductData
     let model: BOMModel
     @ObservedObject var settingsModel: ApplicationSettingsModel
-    
+    // State variables to control section expansion
+    @State private var isDetailsExpanded = true
+    @State private var isRevisionExpanded = false
+    @State private var isFormAttributesExpanded = false
+    @State private var isDatasetsExpanded = false
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    if let matchingSiteId = model.findMatchingSiteId(settingsModel: settingsModel) {
-                                    Button(action: {
-                                        // Action for the button
-                                        print("dddd: ",product)
-                                        openTCAWC(urlString: matchingSiteId.tcURL, uid: product.uid ?? "")
-                                    }) {
-                                        Text("Go to source Teamcenter")
-                                            .padding()
-                                            .background(Color.blue)
-                                            .foregroundColor(.white)
-                                            .cornerRadius(8)
-                                    }
-                                    .padding(.top, 8)
-                                }
-                }
-                // Product Details Section
-                Group {
-                    Text("Product Details")
-                        .font(.headline)
-                        .padding(.bottom, 5)
+            HStack(spacing: 8) { // Small gap between buttons
+                    // Icon-only button
+                    Button(action: {
+                        if let matchingSiteId = model.findMatchingSiteId(settingsModel: settingsModel) {
+                            openTCAWC(urlString: matchingSiteId.tcURL, uid: product.uid ?? "")
+                        }
+                    }) {
+                        Image(systemName: "arrow.up.right.square") // SF Symbol for external link
+                            .frame(width: 18, height: 18)
+                            .font(.system(size: 18, weight: .medium))
+                            .padding(10)
+                            //.background(.white)
+                            //.foregroundColor(.white)
+                            //.cornerRadius(8)
+                            //.shadow(color: Color.blue.opacity(0.3), radius: 5, x: 0, y: 3)
+                    }
+                    .disabled(!(model.findMatchingSiteId(settingsModel: settingsModel) != nil && product.uid != nil))
+                    .opacity((model.findMatchingSiteId(settingsModel: settingsModel) != nil && product.uid != nil) ? 1 : 0.6)
+                    .help("Go to source Teamcenter") // Tooltip
+
+                    // Stub button (placeholder for future functionality)
+                    Button(action: {
+                        // Placeholder action
+                        print("#")
+                    }) {
+                        Image(systemName: "questionmark.circle") // SF Symbol for stub button
+                            .frame(width: 18, height: 18)
+                            .font(.system(size: 18, weight: .medium))
+                            .padding(10)
+                            //.background(.white)
+                            //.foregroundColor(.white)
+                            //.cornerRadius(8)
+                    }
+                    .disabled(true)
+                    .help("This button is a placeholder for future functionality") // Tooltip
                     
-                    //                    Text("ID: \(product.id)")
-                    //                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Item Id: \(product.productId ?? "-")")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Name: \(product.name ?? "-")")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Type: \(product.subType ?? "-")")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    // Stub button (placeholder for future functionality)
+                    Button(action: {
+                        // Placeholder action
+                        print("#")
+                    }) {
+                        Image(systemName: "questionmark.circle") // SF Symbol for stub button
+                            .frame(width: 18, height: 18)
+                            .font(.system(size: 18, weight: .medium))
+                            .padding(10)
+                            //.background(.white)
+                            //.foregroundColor(.white)
+                            //.cornerRadius(8)
+                    }
+                    .disabled(true)
+                    .help("This button is a placeholder for future functionality") // Tooltip
                 }
+                .frame(maxWidth: .infinity, alignment: .leading) // Align buttons to the left
+                .padding(.top, 8) // Add padding at the top
+                .padding(.leading, 16) // Add left padding to align with other content
+                //
+                Divider()
+                //
                 
+            VStack(alignment: .leading, spacing: 8) {
+                // Product Details Section
+                DisclosureGroup(isExpanded: $isDetailsExpanded) {
+                    Group {
+                        //                    Text("ID: \(product.id)")
+                        //                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Item Id: \(product.productId ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Name: \(product.name ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Type: \(product.subType ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } label: {
+                    Text("Details")
+                        .font(.headline)
+                    //.padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    //.background(Color.orange.opacity(100))
+                        .background(Color(nsColor: .windowBackgroundColor))
+                    //.cornerRadius(8)
+                        .onTapGesture {
+                            withAnimation {
+                                isDetailsExpanded.toggle()
+                            }
+                        }
+                }.padding(.bottom, 8)
+                            
                 // Associated Product Revisions Section
                 let revisions = model.productRevisionsDict.values.filter { $0.masterRef == product.id }
                 if !revisions.isEmpty {
-                    Divider()
-                        .padding(.vertical, 8)
-                    
-                    Text("Associated Revisions")
-                        .font(.headline)
-                        .padding(.bottom, 5)
-                    
-                    ForEach(revisions) { revision in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Revision: \(revision.revision ?? "-")")
-                                .font(.subheadline)
-                                .bold()
-                            Text("Name: \(revision.name ?? "-")")
-                            Text("Type: \(revision.subType ?? "-")")
-                            Text("Last Modified: \(revision.lastModDate ?? "-")")
-                            
-                            // Revision Attributes Section (only if userAttributes has valid data)
-                            if !revision.userAttributes.isEmpty && revision.userAttributes.values.contains(where: { !$0.isEmpty }) {
-                                Divider()
-                                    .padding(.vertical, 4)
-                                
-                                Text("Revision Attributes")
-                                    .font(.subheadline)
-                                    .bold()
-                                
-                                ForEach(Array(revision.userAttributes.keys.sorted()), id: \.self) { key in
-                                    if let value = revision.userAttributes[key], !value.isEmpty {
-                                        HStack {
-                                            Text("\(key):")
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                            Text(value)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
+                    DisclosureGroup(isExpanded: $isRevisionExpanded) {
+                        Group {
+                            ForEach(revisions) { revision in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Revision: \(revision.revision ?? "-")")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text("Name: \(revision.name ?? "-")")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text("Type: \(revision.subType ?? "-")")
+                                    Text("Last Modified: \(revision.lastModDate ?? "-")")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    
+                                    // Revision Attributes Section (only if userAttributes has valid data)
+                                    if !revision.userAttributes.isEmpty && revision.userAttributes.values.contains(where: { !$0.isEmpty }) {
+                                        Divider()
+                                            .padding(.vertical, 4)
+                                        
+                                        Text("Revision Attributes")
+                                            .font(.headline)
+                                        
+                                        ForEach(Array(revision.userAttributes.keys.sorted()), id: \.self) { key in
+                                            if let value = revision.userAttributes[key], !value.isEmpty {
+                                                HStack {
+                                                    Text("\(key):")
+                                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                                    Text(value)
+                                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                                }
+                                            }
                                         }
                                     }
+                                    
                                 }
+                                .padding(.vertical, 4)
                             }
                         }
-                        .padding(.vertical, 4)
-                    }
+                        
+                    }label: {
+                        Text("Associated Revisions")
+                            .font(.headline)
+                        //.padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        //.background(Color.orange.opacity(100))
+                            .background(Color(nsColor: .windowBackgroundColor))
+                        //.cornerRadius(8)
+                            .onTapGesture {
+                                withAnimation {
+                                    isRevisionExpanded.toggle()
+                                }
+                            }
+                    }.padding(.bottom, 8)
+                
+      
                 }
                 
                 // Associated DataSets Section
                 let dataSetRefs = revisions.flatMap { $0.dataSetRefs }
                 if !dataSetRefs.isEmpty {
-                    Divider()
-                        .padding(.vertical, 8)
-                    
-                    Text("Associated DataSets")
-                        .font(.headline)
-                        .padding(.bottom, 5)
-                    
-                    ForEach(dataSetRefs, id: \.self) { dsId in
-                        if let ds = model.dataSetsDict[dsId] {
-                            DataSetRow(dataSet: ds, model: model)
-                        } else {
-                            Text("- Unknown DataSet id=\(dsId)")
-                                .foregroundColor(.secondary)
+                    DisclosureGroup(isExpanded: $isDatasetsExpanded) {
+                        Group {
+                            ForEach(dataSetRefs, id: \.self) { dsId in
+                                if let ds = model.dataSetsDict[dsId] {
+                                    DataSetRow(dataSet: ds, model: model)
+                                } else {
+                                    Text("- Unknown DataSet id=\(dsId)")
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                         }
+                    }label: {
+                        Text("Associated Datsets")
+                            .font(.headline)
+                        //.padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        //.background(Color.orange.opacity(100))
+                            .background(Color(nsColor: .windowBackgroundColor))
+                        //.cornerRadius(8)
+                            .onTapGesture {
+                                withAnimation {
+                                    isDatasetsExpanded.toggle()
+                                }
+                            }
                     }
                 }
             }
@@ -1518,13 +1605,72 @@ struct DataSetListItem: View {
 struct DataSetDetailView: View {
     let dataSet: DataSetData
     let model: BOMModel
+    @ObservedObject var settingsModel: ApplicationSettingsModel
     
     var body: some View {
         ScrollView {
+            HStack(spacing: 8) { // Small gap between buttons
+                // Icon-only button
+                Button(action: {
+                    if let matchingSiteId = model.findMatchingSiteId(settingsModel: settingsModel) {
+                        openTCAWC(urlString: matchingSiteId.tcURL, uid: dataSet.uid ?? "")
+                    }
+                }) {
+                    Image(systemName: "arrow.up.right.square") // SF Symbol for external link
+                        .frame(width: 18, height: 18)
+                        .font(.system(size: 18, weight: .medium))
+                        .padding(10)
+                        //.background(.white)
+                        //.foregroundColor(.white)
+                        //.cornerRadius(8)
+                        //.shadow(color: Color.blue.opacity(0.3), radius: 5, x: 0, y: 3)
+                }
+                .disabled(!(model.findMatchingSiteId(settingsModel: settingsModel) != nil && dataSet.uid != nil))
+                .opacity((model.findMatchingSiteId(settingsModel: settingsModel) != nil && dataSet.uid != nil) ? 1 : 0.6)
+                .help("Go to source Teamcenter") // Tooltip
+
+                // Stub button (placeholder for future functionality)
+                Button(action: {
+                    // Placeholder action
+                    print("#")
+                }) {
+                    Image(systemName: "questionmark.circle") // SF Symbol for stub button
+                        .frame(width: 18, height: 18)
+                        .font(.system(size: 18, weight: .medium))
+                        .padding(10)
+                        //.background(.white)
+                        //.foregroundColor(.white)
+                        //.cornerRadius(8)
+                }
+                .disabled(true)
+                .help("This button is a placeholder for future functionality") // Tooltip
+                
+                // Stub button (placeholder for future functionality)
+                Button(action: {
+                    // Placeholder action
+                    print("#")
+                }) {
+                    Image(systemName: "questionmark.circle") // SF Symbol for stub button
+                        .frame(width: 18, height: 18)
+                        .font(.system(size: 18, weight: .medium))
+                        .padding(10)
+                        //.background(.white)
+                        //.foregroundColor(.white)
+                        //.cornerRadius(8)
+                }
+                .disabled(true)
+                .help("This button is a placeholder for future functionality") // Tooltip
+            }
+            .frame(maxWidth: .infinity, alignment: .leading) // Align buttons to the left
+            .padding(.top, 8) // Add padding at the top
+            .padding(.leading, 16) // Add left padding to align with other content
+            //
+            Divider()
+            
             VStack(alignment: .leading, spacing: 8) {
                 // Dataset Details Section
                 Group {
-                    Text("DataSet Details")
+                    Text("Details")
                         .font(.headline)
                         .padding(.bottom, 5)
                     
