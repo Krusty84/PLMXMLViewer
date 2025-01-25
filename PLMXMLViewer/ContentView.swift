@@ -690,6 +690,9 @@ struct BOMView: View {
     //
     @State private var selectedTab: Int = 0
     @State private var isGeneralExpanded = true
+    //
+    @State private var isShowingSettings = false
+    @State private var selectedSiteId: String? = nil
     var body: some View {
         HStack(spacing: 0) {
             // Left: BOM list
@@ -715,13 +718,34 @@ struct BOMView: View {
                                         (Text("Date: ").bold() + Text("\(plmxmlData.date) ").font(.body)) +
                                         (Text("Time: ").bold() + Text("\(plmxmlData.time)").font(.body))
                                         (Text("Configured by: ").bold() + Text("\(appliedRevRule) ").font(.body))
+//                                        ForEach(model.sitesDict.values.sorted(by: { $0.id < $1.id })) { site in
+//                                            HStack(spacing: 10) { // Adjust the spacing value as needed
+//                                                (Text("Site Id: ").bold() + Text("\(site.siteId ?? "Unknown")").font(.body))
+//                                                (Text("Site Name: ").bold() + Text("\(site.name ?? "Unknown")").font(.body))
+//                                                
+//                                            }
+//                                        }
                                         ForEach(model.sitesDict.values.sorted(by: { $0.id < $1.id })) { site in
-                                            HStack(spacing: 10) { // Adjust the spacing value as needed
-                                                (Text("Site Id: ").bold() + Text("\(site.siteId ?? "Unknown")").font(.body))
-                                                (Text("Site Name: ").bold() + Text("\(site.name ?? "Unknown")").font(.body))
-                                                
-                                            }
-                                        }
+                                                                          HStack(spacing: 10) {
+                                                                              // Change background color based on matching siteId
+                                                                              (Text("Site Id: ").bold() + Text("\(site.siteId ?? "Unknown")").font(.body))
+                                                                                  .background(
+                                                                                    settingsModel.hasMatchingSiteId(site.siteId) ? Color.green.opacity(0.3) : Color.yellow.opacity(0.3)
+                                                                                  )
+                                                                                  .contextMenu {
+                                                                                                    Button(action: {
+                                                                                                        selectedSiteId = site.siteId
+                                                                                                        isShowingSettings = true
+                                                                                                    }) {
+                                                                                                        Text("Edit Settings for Site Id")
+                                                                                                        Image(systemName: "gear")
+                                                                                                    }
+                                                                                                }
+                                                                                  .cornerRadius(4)
+                                                                                  .help(settingsModel.hasMatchingSiteId(site.siteId) ? "You can go to Teamcenter" : "You may add this Site Id to Application settings ")
+                                                                              (Text("Site Name: ").bold() + Text("\(site.name ?? "Unknown")").font(.body))
+                                                                          }
+                                                                      }
                                     }
                                 }
                                 
@@ -841,7 +865,22 @@ struct BOMView: View {
         .onAppear {
             loadPLMXML()
         }
+        .sheet(isPresented: $isShowingSettings) {
+               ApplicationSettingsView(model: settingsModel)
+                   .onAppear {
+                       if let siteId = selectedSiteId {
+                           handleSiteIdInSettings(siteId)
+                       }
+                   }
+           }
     }
+    
+    private func handleSiteIdInSettings(_ siteId: String) {
+         if !settingsModel.hasMatchingSiteId(siteId) {
+             // Add a new row with the Site Id
+             settingsModel.appSettings.append(ApplicationSettings(tcSiteId: siteId, tcAwcUrl: ""))
+         }
+     }
     
     private func loadPLMXML() {
         guard let url = Bundle.main.url(forResource: "PLMXMLFile", withExtension: "xml"),
@@ -1851,8 +1890,6 @@ struct FormDetailView: View {
                 // Form Details Section
                 DisclosureGroup(isExpanded: $isDetailsExpanded) {
                     Group {
-                        //                    Text("ID: \(form.id)")
-                        //                        .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Name: \(form.name ?? "-")")
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text("Type: \(form.subType ?? "-")")

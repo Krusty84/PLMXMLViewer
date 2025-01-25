@@ -46,39 +46,53 @@ class ApplicationSettingsModel: ObservableObject {
 
 struct ApplicationSettingsView: View {
     @ObservedObject var model: ApplicationSettingsModel
-    @Environment(\.dismiss) private var dismiss // Use dismiss to close the window
+    @Environment(\.dismiss) private var dismiss
+    var highlightedSiteId: String?
 
     var body: some View {
         Form {
-            // Section for managing site settings
             Section(header: Text("Mapping: Teamcenter Site ID <-> Teamcenter AWC root URL")) {
-                List {
-                    ForEach($model.appSettings) { $setting in
-                        HStack {
-                            TextField("Site Id", text: $setting.tcSiteId)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .frame(width: 150)
-                            TextField("TC AWC URL", text: $setting.tcAwcUrl)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .frame(width: 300)
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach($model.appSettings) { $setting in
+                            HStack {
+                                TextField("Site Id", text: $setting.tcSiteId)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .frame(width: 150)
+                                    .background(
+                                        highlightedSiteId == setting.tcSiteId ? Color.yellow.opacity(0.3) : Color.clear
+                                    )
+                                TextField("TC AWC URL", text: $setting.tcAwcUrl)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .frame(width: 300)
 
-                            Button(action: {
-                                deleteSettingsPairsRow(with: setting.id)
-                            }) {
-                                Image(systemName: "minus.circle")
-                                    .foregroundColor(.red)
+                                Button(action: {
+                                    deleteSettingsPairsRow(with: setting.id)
+                                }) {
+                                    Image(systemName: "minus.circle")
+                                        .foregroundColor(.red)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .help("Delete this setting")
                             }
-                            .buttonStyle(PlainButtonStyle())
-                            .help("Delete this setting")
+                            .id(setting.id) // Assign a unique ID to each row
+                        }
+                        .onDelete(perform: deleteSettingsPairsRow)
+                    }
+                    .frame(minHeight: 200)
+                    .listStyle(InsetListStyle())
+                    .onAppear {
+                        if let siteId = highlightedSiteId,
+                           let setting = model.appSettings.first(where: { $0.tcSiteId == siteId }) {
+                            // Scroll to the highlighted row
+                            withAnimation {
+                                proxy.scrollTo(setting.id, anchor: .center)
+                            }
                         }
                     }
-                    .onDelete(perform: deleteSettingsPairsRow) // Enable swipe-to-delete
                 }
-                .frame(minHeight: 200)
-                .listStyle(InsetListStyle())
             }
            
-            // Section for action buttons
             Section {
                 HStack {
                     Button(action: addSettingsPairsRow) {
@@ -95,7 +109,7 @@ struct ApplicationSettingsView: View {
                     .help("Save changes")
 
                     Button("Close") {
-                        dismiss() // Close the window
+                        dismiss()
                     }
                     .help("Close this window")
                 }
@@ -106,7 +120,7 @@ struct ApplicationSettingsView: View {
         .onDisappear {
             model.saveSettings()
         }
-        .frame(minWidth: 600, minHeight: 400) // Adjust size as needed
+        .frame(minWidth: 600, minHeight: 400)
     }
 
     // Add a new row to the site settings
