@@ -49,6 +49,7 @@ struct FormData: Identifiable {
     var subType: String?
     var subClass: String?
     var userAttributes: [String: String] = [:]
+    var uid: String?
 }
 
 /// Holds data from <ProductRevision> elements.
@@ -480,6 +481,11 @@ class BOMParser: NSObject, XMLParserDelegate {
                                     self.currentDataSet = currentDataSet
                                     self.dataSetsDict[currentDataSet.id] = currentDataSet
                                     logger.log("Parsed ApplicationRef with label (uid) for Dataset: \(label)")
+                                }  else if var currentForm = currentForm {
+                                    currentForm.uid = label
+                                    self.currentForm = currentForm
+                                    self.formsDict[currentForm.id] = currentForm
+                                    logger.log("Parsed ApplicationRef with label (uid) for Form: \(label)")
                                 }
                             }
             default:
@@ -817,7 +823,7 @@ struct BOMView: View {
                         case 3:
                             if let selectedFormId = selectedFormId,
                                let form = model.formsDict[selectedFormId] {
-                                FormDetailView(form: form, model: model)
+                                FormDetailView(form: form, model: model,settingsModel: settingsModel)
                                     .frame(minWidth: 400)
                             } else {
                                 Text("No Form Selected")
@@ -1304,9 +1310,6 @@ struct DataSetRow: View {
                             if let path = ef.fullPath {
                                 FileRow(filePath: path)
                                     .padding(.leading, 8)
-                                //                                Button("Open File") {
-                                //                                    openFile(atPath: path)
-                                //                                }
                                     .font(.caption2)
                                     .padding(.leading, 8)
                             }
@@ -1442,7 +1445,6 @@ struct ProductDetailView: View {
                 //
                 Divider()
                 //
-                
             VStack(alignment: .leading, spacing: 8) {
                 // Product Details Section
                 DisclosureGroup(isExpanded: $isDetailsExpanded) {
@@ -1606,7 +1608,11 @@ struct DataSetDetailView: View {
     let dataSet: DataSetData
     let model: BOMModel
     @ObservedObject var settingsModel: ApplicationSettingsModel
-    
+    // State variables to control section expansion
+    @State private var isDetailsExpanded = true
+    @State private var isRevisionExpanded = false
+    @State private var isFormAttributesExpanded = false
+    @State private var isDatasetsExpanded = false
     var body: some View {
         ScrollView {
             HStack(spacing: 8) { // Small gap between buttons
@@ -1668,50 +1674,64 @@ struct DataSetDetailView: View {
             Divider()
             
             VStack(alignment: .leading, spacing: 8) {
-                // Dataset Details Section
-                Group {
-                    Text("Details")
-                        .font(.headline)
-                        .padding(.bottom, 5)
-                    
-                    //                    Text("ID: \(dataSet.id)")
-                    //                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Name: \(dataSet.name ?? "-")")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Type: \(dataSet.type ?? "-")")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Version: \(dataSet.version ?? "-")")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
                 
-                // Associated Files Section
-                if !dataSet.memberRefs.isEmpty {
-                    Divider()
-                        .padding(.vertical, 8)
-                    
-                    Text("Associated Files")
-                        .font(.headline)
-                        .padding(.bottom, 5)
-                    
-                    ForEach(dataSet.memberRefs, id: \.self) { fileId in
-                        if let ef = model.externalFilesDict[fileId] {
-                            HStack {
-                                if let path = ef.fullPath {
-                                    FileRow(filePath: path)
-                                        .padding(.leading, 8)
-                                        .font(.caption2)
+                DisclosureGroup(isExpanded: $isDetailsExpanded) {
+                    Group {
+                        //                    Text("ID: \(dataSet.id)")
+                        //                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Name: \(dataSet.name ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Type: \(dataSet.type ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Version: \(dataSet.version ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        // Associated Files Section
+                        if !dataSet.memberRefs.isEmpty {
+                            Divider()
+                                .padding(.vertical, 8)
+                            
+                            Text("Associated Files")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .font(.headline)
+                                .padding(.bottom, 5)
+                            
+                            ForEach(dataSet.memberRefs, id: \.self) { fileId in
+                                if let ef = model.externalFilesDict[fileId] {
+                                    HStack {
+                                        if let path = ef.fullPath {
+                                            FileRow(filePath: path)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .padding(.leading, 8)
+                                                .font(.caption2)
+                                        } else {
+                                            Text("File: \(ef.locationRef ?? "-") [\(ef.format ?? "")]")
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .font(.caption)
+                                        }
+                                    }
                                 } else {
-                                    Text("File: \(ef.locationRef ?? "-") [\(ef.format ?? "")]")
+                                    Text("Unknown ExternalFile id=\(fileId)")
                                         .font(.caption)
+                                        .foregroundColor(.secondary)
                                 }
                             }
-                        } else {
-                            Text("Unknown ExternalFile id=\(fileId)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
                         }
                     }
-                }
+                }label: {
+                    Text("Details")
+                        .font(.headline)
+                    //.padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    //.background(Color.orange.opacity(100))
+                        .background(Color(nsColor: .windowBackgroundColor))
+                    //.cornerRadius(8)
+                        .onTapGesture {
+                            withAnimation {
+                                isDetailsExpanded.toggle()
+                            }
+                        }
+                }.padding(.bottom, 8)
+                
             }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1764,46 +1784,117 @@ struct FormListItem: View {
 struct FormDetailView: View {
     let form: FormData
     let model: BOMModel
-    
+    @ObservedObject var settingsModel: ApplicationSettingsModel
+    // State variables to control section expansion
+    @State private var isDetailsExpanded = true
     var body: some View {
         ScrollView {
+            HStack(spacing: 8) { // Small gap between buttons
+                    // Icon-only button
+                    Button(action: {
+                        if let matchingSiteId = model.findMatchingSiteId(settingsModel: settingsModel) {
+                            openTCAWC(urlString: matchingSiteId.tcURL, uid: form.uid ?? "")
+                        }
+                    }) {
+                        Image(systemName: "arrow.up.right.square") // SF Symbol for external link
+                            .frame(width: 18, height: 18)
+                            .font(.system(size: 18, weight: .medium))
+                            .padding(10)
+                            //.background(.white)
+                            //.foregroundColor(.white)
+                            //.cornerRadius(8)
+                            //.shadow(color: Color.blue.opacity(0.3), radius: 5, x: 0, y: 3)
+                    }
+                    .disabled(!(model.findMatchingSiteId(settingsModel: settingsModel) != nil && form.uid != nil))
+                    .opacity((model.findMatchingSiteId(settingsModel: settingsModel) != nil && form.uid != nil) ? 1 : 0.6)
+                    .help("Go to source Teamcenter") // Tooltip
+
+                    // Stub button (placeholder for future functionality)
+                    Button(action: {
+                        // Placeholder action
+                        print("#")
+                    }) {
+                        Image(systemName: "questionmark.circle") // SF Symbol for stub button
+                            .frame(width: 18, height: 18)
+                            .font(.system(size: 18, weight: .medium))
+                            .padding(10)
+                            //.background(.white)
+                            //.foregroundColor(.white)
+                            //.cornerRadius(8)
+                    }
+                    .disabled(true)
+                    .help("This button is a placeholder for future functionality") // Tooltip
+                    
+                    // Stub button (placeholder for future functionality)
+                    Button(action: {
+                        // Placeholder action
+                        print("#")
+                    }) {
+                        Image(systemName: "questionmark.circle") // SF Symbol for stub button
+                            .frame(width: 18, height: 18)
+                            .font(.system(size: 18, weight: .medium))
+                            .padding(10)
+                            //.background(.white)
+                            //.foregroundColor(.white)
+                            //.cornerRadius(8)
+                    }
+                    .disabled(true)
+                    .help("This button is a placeholder for future functionality") // Tooltip
+                }
+                .frame(maxWidth: .infinity, alignment: .leading) // Align buttons to the left
+                .padding(.top, 8) // Add padding at the top
+                .padding(.leading, 16) // Add left padding to align with other content
+                //
+                Divider()
+                //
             VStack(alignment: .leading, spacing: 8) {
                 // Form Details Section
-                Group {
-                    Text("Form Details")
-                        .font(.headline)
-                        .padding(.bottom, 5)
-                    
-                    //                    Text("ID: \(form.id)")
-                    //                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Name: \(form.name ?? "-")")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Type: \(form.subType ?? "-")")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Class: \(form.subClass ?? "-")")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                
-                // Form Attributes Section
-                if !form.userAttributes.isEmpty {
-                    Divider()
-                        .padding(.vertical, 8)
-                    
-                    Text("Form Attributes")
-                        .font(.headline)
-                        .padding(.bottom, 5)
-                    
-                    ForEach(Array(form.userAttributes.keys.sorted()), id: \.self) { key in
-                        if let value = form.userAttributes[key], !value.isEmpty {
-                            HStack {
-                                Text("\(key):")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Text(value)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                DisclosureGroup(isExpanded: $isDetailsExpanded) {
+                    Group {
+                        //                    Text("ID: \(form.id)")
+                        //                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Name: \(form.name ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Type: \(form.subType ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Class: \(form.subClass ?? "-")")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        // Associated Files Section
+                        if !form.userAttributes.isEmpty {
+                            Divider()
+                                .padding(.vertical, 8)
+                            
+                            Text("Form Attributes")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .font(.headline)
+                                .padding(.bottom, 5)
+                            
+                            ForEach(Array(form.userAttributes.keys.sorted()), id: \.self) { key in
+                                if let value = form.userAttributes[key], !value.isEmpty {
+                                    HStack {
+                                        Text("\(key):")
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Text(value)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                }
                             }
                         }
                     }
-                }
+                }label: {
+                    Text("Details")
+                        .font(.headline)
+                    //.padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    //.background(Color.orange.opacity(100))
+                        .background(Color(nsColor: .windowBackgroundColor))
+                    //.cornerRadius(8)
+                        .onTapGesture {
+                            withAnimation {
+                                isDetailsExpanded.toggle()
+                            }
+                        }
+                }.padding(.bottom, 8)
             }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
