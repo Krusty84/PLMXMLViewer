@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3D2034912D47900600FCA8AB /* CodeEditor in Frameworks */ = {isa = PBXBuildFile; productRef = 3D2034902D47900600FCA8AB /* CodeEditor */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		3DE2AEA12D397EE60082700D /* PLMXMLViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PLMXMLViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3D2034912D47900600FCA8AB /* CodeEditor in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = PLMXMLViewer;
 			packageProductDependencies = (
+				3D2034902D47900600FCA8AB /* CodeEditor */,
 			);
 			productName = PLMXMLViewer;
 			productReference = 3DE2AEA12D397EE60082700D /* PLMXMLViewer.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 3DE2AE982D397EE60082700D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3D20348F2D47900600FCA8AB /* XCRemoteSwiftPackageReference "CodeEditor" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3DE2AEA22D397EE60082700D /* Products */;
 			projectDirPath = "";
@@ -323,6 +332,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3D20348F2D47900600FCA8AB /* XCRemoteSwiftPackageReference "CodeEditor" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ZeeZide/CodeEditor";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.6;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3D2034902D47900600FCA8AB /* CodeEditor */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3D20348F2D47900600FCA8AB /* XCRemoteSwiftPackageReference "CodeEditor" */;
+			productName = CodeEditor;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3DE2AE992D397EE60082700D /* Project object */;
 }

@@ -56,11 +56,24 @@ struct PLMXMLViewerApp: App {
             
             do {
                 let data = try Data(contentsOf: url)
+                // Convert raw XML bytes into a String:
+                let rawXML = String(data: data, encoding: .utf8) ?? "Failed to decode as UTF-8"
+                
                 let plmxmlDirectory = url.deletingLastPathComponent()
-                model.loadPLMXML(from: data, fileName: url.lastPathComponent, plmxmlDirectory: plmxmlDirectory)
+                
+                // 1) Store it in your model so you can show it in a CodeEditor or TextEditor:
+                model.rawPLMXML = rawXML
+                
+                // 2) Then parse as usual:
+                model.loadPLMXML(
+                    from: data,
+                    fileName: url.lastPathComponent,
+                    plmxmlDirectory: plmxmlDirectory
+                )
             } catch {
                 print("Failed to read file: \(error)")
             }
         }
     }
+
 }

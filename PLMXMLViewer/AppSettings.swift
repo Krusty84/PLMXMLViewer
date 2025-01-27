@@ -85,9 +85,9 @@ struct ApplicationSettingsView: View {
                             .help("Delete this setting")
                         }
                         .onAppear {
-                            if highlightedSiteId == setting.tcSiteId {
-                                print("Highlighted Site Id: \(setting.tcSiteId)")
-                            }
+//                            if highlightedSiteId == setting.tcSiteId {
+//                                print("Highlighted Site Id: \(setting.tcSiteId)")
+//                            }
                         }
                     }
                     .onDelete(perform: deleteSettingsPairsRow)
@@ -123,7 +123,7 @@ struct ApplicationSettingsView: View {
         }
         .padding()
         .onAppear {
-            print("SettingsView appeared with highlightedSiteId: \(highlightedSiteId ?? "nil")")
+            //print("SettingsView appeared with highlightedSiteId: \(highlightedSiteId ?? "nil")")
             // Add a new row if highlightedSiteId is not already in the settings
             if let highlightedSiteId = highlightedSiteId,
                !model.appSettings.contains(where: { $0.tcSiteId == highlightedSiteId }) {

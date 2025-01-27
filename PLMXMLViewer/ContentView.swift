@@ -8,6 +8,7 @@
 import SwiftUI
 import Foundation
 import AppKit
+import CodeEditor
 
 // MARK: - Data Models
 
@@ -609,6 +610,7 @@ class BOMParser: NSObject, XMLParserDelegate {
 
 /// We store the BOM data in this model, so the UI can react to changes.
 class BOMModel: ObservableObject {
+    @Published var rawPLMXML: String = ""
     @Published var productViews: [ProductView] = []
     @Published var revisionRules: [String: RevisionRuleData] = [:]
     @Published var plmxmlInfo: [String: PLMXMLGeneralData] = [:]
@@ -737,8 +739,8 @@ struct BOMView: View {
                                                                                                         selectedSiteId = site.siteId
                                                                                                         isShowingSettings = true
                                                                                                     }) {
-                                                                                                        Text("Edit Settings for Site Id")
-                                                                                                        Image(systemName: "gear")
+                                                                                                        Text("Open Settings")
+                                                                                                        //Image(systemName: "gear")
                                                                                                     }
                                                                                                 }
                                                                                   .cornerRadius(4)
@@ -771,6 +773,7 @@ struct BOMView: View {
                                     Text("Items").tag(1)
                                     Text("Datasets").tag(2)
                                     Text("Forms").tag(3)
+                                    Text("Raw PLMXML").tag(4)
                                 }
                                 .pickerStyle(SegmentedPickerStyle())
                                 .padding(.horizontal)
@@ -802,6 +805,8 @@ struct BOMView: View {
                                         ForEach(model.formsDict.values.sorted(by: { $0.id < $1.id })) { form in
                                             FormListItem(form: form, selectedFormId: $selectedFormId)
                                         }
+                                    case 4:
+                                        XMLEditorView(rawXMLData: $model.rawPLMXML).frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
                                     default:
                                         EmptyView()
                                 }
@@ -885,16 +890,10 @@ struct BOMView: View {
     private func loadPLMXML() {
         guard let url = Bundle.main.url(forResource: "PLMXMLFile", withExtension: "xml"),
               let data = try? Data(contentsOf: url) else {
-            print("Could not load PLMXMLFile.xml from the bundle.")
+            //print("Could not load PLMXMLFile.xml from the bundle.")
             isLoading = false
             return
         }
-        
-        //let parser = BOMParser()
-        //        let views = parser.parse(xmlData: data)
-        //
-        //        productViews = views
-        //        revisionRules = parser.revisionRulesDict
         isLoading = false
     }
 }
@@ -1939,6 +1938,9 @@ struct FormDetailView: View {
     }
 }
 
-//#Preview {
-//    BOMView(model: model)
-//}
+struct XMLEditorView: View {
+    @Binding var rawXMLData: String
+    var body: some View {
+        CodeEditor(source: $rawXMLData, language: .xml,flags: [ .selectable, .smartIndent])
+    }
+}
