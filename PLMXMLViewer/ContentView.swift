@@ -866,7 +866,7 @@ struct BOMView: View {
             loadPLMXML()
         }
         .sheet(isPresented: $isShowingSettings) {
-               ApplicationSettingsView(model: settingsModel)
+            ApplicationSettingsView(model: settingsModel, highlightedSiteId:$selectedSiteId)
                    .onAppear {
                        if let siteId = selectedSiteId {
                            handleSiteIdInSettings(siteId)
