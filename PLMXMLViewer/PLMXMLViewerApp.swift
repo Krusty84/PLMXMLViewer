@@ -14,6 +14,7 @@ struct PLMXMLViewerApp: App {
                         keyWindow.title = "PLMXMLViewer: \(newFileName)"
                     }
                 }
+                .frame(minHeight: 400)
         }
         .commands {
             CommandGroup(after: .newItem) {

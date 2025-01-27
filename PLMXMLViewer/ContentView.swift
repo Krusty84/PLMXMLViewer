@@ -806,7 +806,7 @@ struct BOMView: View {
                                             FormListItem(form: form, selectedFormId: $selectedFormId)
                                         }
                                     case 4:
-                                        XMLEditorView(rawXMLData: $model.rawPLMXML).frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+                                        XMLEditorView(rawXMLData: $model.rawPLMXML).frame(minHeight: 400)
                                     default:
                                         EmptyView()
                                 }
