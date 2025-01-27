@@ -742,7 +742,7 @@ struct BOMView: View {
                                                                                                     }
                                                                                                 }
                                                                                   .cornerRadius(4)
-                                                                                  .help(settingsModel.hasMatchingSiteId(site.siteId) ? "You can go to Teamcenter" : "You may add this Site Id to Application settings ")
+                                                                                  .help(settingsModel.hasMatchingSiteId(site.siteId) ? "The Site Id has an associated AWC URL, you can go to the original Teamcenter" : "The Site Id does not have an associated AWC URL, you can go to settings (open the context menu here) and add this link")
                                                                               (Text("Site Name: ").bold() + Text("\(site.name ?? "Unknown")").font(.body))
                                                                           }
                                                                       }
